@@ -2,6 +2,7 @@ package integration
 
 import (
 	"database/sql"
+	"encoding/base64"
 
 	"github.com/go-gorp/gorp"
 
@@ -53,8 +54,12 @@ func LoadProjectIntegrationByName(db gorp.SqlExecutor, key string, name string, 
 	for k, v := range p.Config {
 		if v.Type == sdk.IntegrationConfigTypePassword {
 			if clearPwd {
+				btes, err := base64.StdEncoding.DecodeString(v.Value)
+				if err != nil {
+					return p, sdk.WithStack(err)
+				}
 				var decryptedValue string
-				if err := gorpmapping.Decrypt([]byte(v.Value), &decryptedValue, []interface{}{pp.ProjectID, pp.Name}); err != nil {
+				if err := gorpmapping.Decrypt(btes, &decryptedValue, []interface{}{pp.ProjectID, pp.Name}); err != nil {
 					return p, sdk.WrapError(err, "LoadProjectIntegrationByName> Cannot decrypt value")
 				}
 				v.Value = decryptedValue
@@ -84,8 +89,12 @@ func LoadProjectIntegrationByID(db gorp.SqlExecutor, id int64, clearPassword boo
 	for k, v := range pp.Config {
 		if v.Type == sdk.IntegrationConfigTypePassword {
 			if clearPassword {
+				btes, err := base64.StdEncoding.DecodeString(v.Value)
+				if err != nil {
+					return nil, sdk.WithStack(err)
+				}
 				var decryptedValue string
-				if err := gorpmapping.Decrypt([]byte(v.Value), &decryptedValue, []interface{}{pp.ProjectID, pp.Name}); err != nil {
+				if err := gorpmapping.Decrypt(btes, &decryptedValue, []interface{}{pp.ProjectID, pp.Name}); err != nil {
 					return nil, sdk.WrapError(err, "LoadProjectIntegrationByID> Cannot decrypt value")
 				}
 				v.Value = decryptedValue
@@ -122,8 +131,12 @@ func LoadIntegrationsByProjectID(db gorp.SqlExecutor, id int64, clearPassword bo
 		for k, v := range pp.Config {
 			if v.Type == sdk.IntegrationConfigTypePassword {
 				if clearPassword {
+					btes, err := base64.StdEncoding.DecodeString(v.Value)
+					if err != nil {
+						return nil, sdk.WithStack(err)
+					}
 					var decryptedValue string
-					if err := gorpmapping.Decrypt([]byte(v.Value), &decryptedValue, []interface{}{pp.ProjectID, pp.Name}); err != nil {
+					if err := gorpmapping.Decrypt(btes, &decryptedValue, []interface{}{pp.ProjectID, pp.Name}); err != nil {
 						return nil, sdk.WrapError(err, "LoadIntegrationsByProjectID> Cannot decrypt value")
 					}
 					v.Value = decryptedValue
@@ -147,7 +160,7 @@ func InsertIntegration(db gorp.SqlExecutor, pp *sdk.ProjectIntegration) error {
 			if err := gorpmapping.Encrypt(v.Value, &s, []interface{}{pp.ProjectID, pp.Name}); err != nil {
 				return sdk.WrapError(err, "InsertIntegration> Cannot encrypt password")
 			}
-			v.Value = string(s)
+			v.Value = base64.StdEncoding.EncodeToString(s)
 			pp.Config[k] = v
 		}
 	}
@@ -167,7 +180,7 @@ func UpdateIntegration(db gorp.SqlExecutor, pp sdk.ProjectIntegration) error {
 			if err := gorpmapping.Encrypt(v.Value, &s, []interface{}{pp.ProjectID, pp.Name}); err != nil {
 				return sdk.WrapError(err, "UpdateIntegration> Cannot encrypt password")
 			}
-			v.Value = string(s)
+			v.Value = base64.StdEncoding.EncodeToString(s)
 			pp.Config[k] = v
 		}
 	}
@@ -224,8 +237,12 @@ func LoadIntegrationsByWorkflowID(db gorp.SqlExecutor, id int64, clearPassword b
 		for k, v := range pp.Config {
 			if v.Type == sdk.IntegrationConfigTypePassword {
 				if clearPassword {
+					btes, err := base64.StdEncoding.DecodeString(v.Value)
+					if err != nil {
+						return nil, sdk.WithStack(err)
+					}
 					var decryptedValue string
-					if err := gorpmapping.Decrypt([]byte(v.Value), &decryptedValue, []interface{}{pp.ProjectID, pp.Name}); err != nil {
+					if err := gorpmapping.Decrypt(btes, &decryptedValue, []interface{}{pp.ProjectID, pp.Name}); err != nil {
 						return nil, sdk.WrapError(err, "LoadIntegrationsByWorkflowID> Cannot decrypt value")
 					}
 					v.Value = decryptedValue
