@@ -6,7 +6,6 @@ import (
 	"github.com/go-gorp/gorp"
 
 	"github.com/ovh/cds/engine/api/database/gorpmapping"
-	"github.com/ovh/cds/engine/api/secret"
 	"github.com/ovh/cds/sdk"
 )
 
@@ -62,7 +61,7 @@ func LoadPublicModelsByType(db gorp.SqlExecutor, integrationType *sdk.Integratio
 		if clearPassword {
 			for pfName, pfCfg := range integration.PublicConfigurations {
 				newCfg := pfCfg.Clone()
-				if err := newCfg.DecryptSecrets(secret.DecryptValue); err != nil {
+				if err := newCfg.DecryptSecrets(gorpmapping.Decrypt); err != nil {
 					return nil, sdk.WrapError(err, "unable to encrypt config")
 				}
 				integration.PublicConfigurations[pfName] = newCfg
@@ -91,7 +90,7 @@ func LoadModel(db gorp.SqlExecutor, modelID int64, clearPassword bool) (sdk.Inte
 	if clearPassword {
 		for pfName, pfCfg := range pm.PublicConfigurations {
 			newCfg := pfCfg.Clone()
-			if err := newCfg.DecryptSecrets(secret.DecryptValue); err != nil {
+			if err := newCfg.DecryptSecrets(gorpmapping.Decrypt); err != nil {
 				return sdk.IntegrationModel{}, sdk.WrapError(err, "unable to encrypt config")
 			}
 			pm.PublicConfigurations[pfName] = newCfg
@@ -118,7 +117,7 @@ func LoadModelByName(db gorp.SqlExecutor, name string, clearPassword bool) (sdk.
 	if clearPassword {
 		for pfName, pfCfg := range pm.PublicConfigurations {
 			newCfg := pfCfg.Clone()
-			if err := newCfg.DecryptSecrets(secret.DecryptValue); err != nil {
+			if err := newCfg.DecryptSecrets(gorpmapping.Decrypt); err != nil {
 				return sdk.IntegrationModel{}, sdk.WrapError(err, "unable to encrypt config")
 			}
 			pm.PublicConfigurations[pfName] = newCfg
@@ -228,7 +227,7 @@ func (pm *integrationModel) PostUpdate(db gorp.SqlExecutor) error {
 	cfg := make(map[string]sdk.IntegrationConfig, len(pm.PublicConfigurations))
 	for pfName, pfCfg := range pm.PublicConfigurations {
 		newCfg := pfCfg.Clone()
-		if err := newCfg.EncryptSecrets(secret.EncryptValue); err != nil {
+		if err := newCfg.EncryptSecrets(gorpmapping.Encrypt); err != nil {
 			return sdk.WrapError(err, "unable to encrypt config")
 		}
 		cfg[pfName] = newCfg

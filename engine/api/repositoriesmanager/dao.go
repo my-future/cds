@@ -6,7 +6,7 @@ import (
 	"github.com/go-gorp/gorp"
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/ovh/cds/engine/api/secret"
+	"github.com/ovh/cds/engine/api/database/gorpmapping"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/log"
 )
@@ -32,13 +32,13 @@ func InsertForProject(db gorp.SqlExecutor, proj *sdk.Project, vcsServer *sdk.Pro
 
 	log.Debug("repositoriesmanager.InsertForProject> %s %s", proj.Key, string(b1))
 
-	encryptedVCSServerStr, err := secret.Encrypt(b1)
-	if err != nil {
+	var btes []byte
+	if err := gorpmapping.Encrypt(b1, &btes, []interface{}{proj.Key}); err != nil {
 		return err
 	}
 
-	if _, err := db.Exec("update project set vcs_servers = $2 where projectkey = $1", proj.Key, encryptedVCSServerStr); err != nil {
-		return err
+	if _, err := db.Exec("update project set vcs_servers = $2 where projectkey = $1", proj.Key, string(btes)); err != nil {
+		return sdk.WithStack(err)
 	}
 
 	proj.VCSServers = servers
@@ -55,12 +55,12 @@ func UpdateForProject(db gorp.SqlExecutor, proj *sdk.Project, vcsServers []sdk.P
 
 	log.Debug("repositoriesmanager.UpdateForProject> %s %s", proj.Key, string(b1))
 
-	encryptedVCSServerStr, err := secret.Encrypt(b1)
-	if err != nil {
+	var btes []byte
+	if err := gorpmapping.Encrypt(b1, &btes, []interface{}{proj.Key}); err != nil {
 		return err
 	}
 
-	if _, err := db.Exec("update project set vcs_servers = $2 where projectkey = $1", proj.Key, encryptedVCSServerStr); err != nil {
+	if _, err := db.Exec("update project set vcs_servers = $2 where projectkey = $1", proj.Key, string(btes)); err != nil {
 		return sdk.WithStack(err)
 	}
 
@@ -87,13 +87,13 @@ func DeleteForProject(db gorp.SqlExecutor, proj *sdk.Project, vcsServer *sdk.Pro
 		return err
 	}
 
-	encryptedVCSServerStr, err := secret.Encrypt(b1)
-	if err != nil {
+	var btes []byte
+	if err := gorpmapping.Encrypt(b1, &btes, []interface{}{proj.Key}); err != nil {
 		return err
 	}
 
-	if _, err := db.Exec("update project set vcs_servers = $2 where projectkey = $1", proj.Key, encryptedVCSServerStr); err != nil {
-		return err
+	if _, err := db.Exec("update project set vcs_servers = $2 where projectkey = $1", proj.Key, string(btes)); err != nil {
+		return sdk.WithStack(err)
 	}
 
 	proj.VCSServers = servers
@@ -111,8 +111,8 @@ func LoadAllForProject(db gorp.SqlExecutor, projectKey string) ([]sdk.ProjectVCS
 		return []sdk.ProjectVCSServer{}, nil
 	}
 
-	clearVCSServer, err := secret.Decrypt(vcsServerStr)
-	if err != nil {
+	var clearVCSServer []byte
+	if err := gorpmapping.Decrypt(vcsServerStr, &clearVCSServer, []interface{}{projectKey}); err != nil {
 		return nil, err
 	}
 	vcsServer := []sdk.ProjectVCSServer{}
@@ -135,8 +135,8 @@ func LoadForProject(db gorp.SqlExecutor, projectKey, rmName string) (*sdk.Projec
 		return nil, sdk.WithStack(sdk.ErrNotFound)
 	}
 
-	clearVCSServer, err := secret.Decrypt(vcsServerStr)
-	if err != nil {
+	var clearVCSServer []byte
+	if err := gorpmapping.Decrypt(vcsServerStr, &clearVCSServer, []interface{}{projectKey}); err != nil {
 		return nil, err
 	}
 

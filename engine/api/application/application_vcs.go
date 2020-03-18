@@ -1,22 +1,21 @@
 package application
 
 import (
-	"encoding/base64"
+	"github.com/ovh/cds/engine/api/database/gorpmapping"
 
 	"github.com/go-gorp/gorp"
 
-	"github.com/ovh/cds/engine/api/secret"
 	"github.com/ovh/cds/sdk"
 )
 
 // EncryptVCSStrategyPassword Encrypt vcs password
 func EncryptVCSStrategyPassword(app *sdk.Application) error {
-	encryptedPwd, err := secret.Encrypt([]byte(app.RepositoryStrategy.Password))
-	if err != nil {
+	var encryptedPwd []byte
+	if err := gorpmapping.Encrypt(app.RepositoryStrategy.Password, &encryptedPwd, []interface{}{app.ProjectKey, app.ID}); err != nil {
 		return sdk.WrapError(err, "Unable to encrypt password")
 	}
 
-	app.RepositoryStrategy.Password = base64.StdEncoding.EncodeToString(encryptedPwd)
+	app.RepositoryStrategy.Password = string(encryptedPwd)
 	return nil
 }
 
@@ -25,17 +24,13 @@ func DecryptVCSStrategyPassword(app *sdk.Application) error {
 	if app.RepositoryStrategy.Password == "" {
 		return nil
 	}
-	encryptedPassword, err64 := base64.StdEncoding.DecodeString(app.RepositoryStrategy.Password)
-	if err64 != nil {
-		return sdk.WrapError(err64, "EncryptVCSStrategyPassword> Unable to decoding password")
+
+	var clearPWD string
+	if err := gorpmapping.Decrypt([]byte(app.RepositoryStrategy.Password), &clearPWD, []interface{}{app.ProjectKey, app.ID}); err != nil {
+		return err
 	}
 
-	clearPWD, err := secret.Decrypt([]byte(encryptedPassword))
-	if err != nil {
-		return sdk.WrapError(err, "Unable to decrypt password")
-	}
-
-	app.RepositoryStrategy.Password = string(clearPWD)
+	app.RepositoryStrategy.Password = clearPWD
 	return nil
 }
 

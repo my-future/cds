@@ -9,7 +9,6 @@ import (
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/ovh/cds/engine/api/database/gorpmapping"
-	"github.com/ovh/cds/engine/api/secret"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/log"
 )
@@ -108,8 +107,9 @@ func (p *dbProject) PostGet(db gorp.SqlExecutor) error {
 	}
 
 	if len(fields.VCSServers) > 0 {
-		clearVCSServer, err := secret.Decrypt([]byte(fields.VCSServers))
-		if err != nil {
+		// It is ok to load and decrypt project VCS server, because those fields are not JSON exported
+		var clearVCSServer []byte
+		if err := gorpmapping.Decrypt(fields.VCSServers, &clearVCSServer, []interface{}{p.Key}); err != nil {
 			return err
 		}
 
@@ -137,16 +137,17 @@ func (p *dbProject) PostUpdate(db gorp.SqlExecutor) error {
 		if err != nil {
 			return err
 		}
-		encryptedVCSServerStr, err := secret.Encrypt(b1)
-		if err != nil {
-			return err
+		var s []byte
+		if err := gorpmapping.Encrypt(b1, &s, []interface{}{p.Key}); err != nil {
+			return sdk.WrapError(err, "project.PostUpdate> Cannot encrypt password")
 		}
+		encryptedVCSServerStr := string(s)
 		_, err = db.Exec("update project set metadata = $2, vcs_servers = $3 where id = $1", p.ID, bm, encryptedVCSServerStr)
-		return err
+		return sdk.WithStack(err)
 	}
 
 	_, err := db.Exec("update project set metadata = $2 where id = $1", p.ID, bm)
-	return err
+	return sdk.WithStack(err)
 }
 
 // PostInsert is a db hook

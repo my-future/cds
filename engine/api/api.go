@@ -703,6 +703,31 @@ func (a *API) Serve(ctx context.Context) error {
 		return migrate.CleanDuplicateNodes(ctx, a.DBConnectionFactory.GetDBMap())
 	}})
 
+	migrate.Add(ctx, sdk.Migration{Name: "RefactorAppDeploymentStrategies", Release: "0.44.0", Blocker: true, Automatic: true, ExecFunc: func(ctx context.Context) error {
+		return migrate.RefactorAppDeploymentStrategies(ctx, a.DBConnectionFactory.GetDBMap())
+	}})
+
+	migrate.Add(ctx, sdk.Migration{Name: "RefactorProjectIntegration", Release: "0.44.0", Blocker: true, Automatic: true, ExecFunc: func(ctx context.Context) error {
+		// TODO
+		return nil
+	}})
+	migrate.Add(ctx, sdk.Migration{Name: "RefactorWorkerModel", Release: "0.44.0", Blocker: true, Automatic: true, ExecFunc: func(ctx context.Context) error {
+		// TODO
+		return nil
+	}})
+	migrate.Add(ctx, sdk.Migration{Name: "RefactorProjectVCS", Release: "0.44.0", Blocker: true, Automatic: true, ExecFunc: func(ctx context.Context) error {
+		// TODO
+		return nil
+	}})
+	migrate.Add(ctx, sdk.Migration{Name: "RefactorApplicationVCS", Release: "0.44.0", Blocker: true, Automatic: true, ExecFunc: func(ctx context.Context) error {
+		// TODO
+		return nil
+	}})
+	migrate.Add(ctx, sdk.Migration{Name: "RefactorIntegrationModel", Release: "0.44.0", Blocker: true, Automatic: true, ExecFunc: func(ctx context.Context) error {
+		// TODO
+		return nil
+	}})
+
 	isFreshInstall, errF := version.IsFreshInstall(a.mustDB())
 	if errF != nil {
 		return sdk.WrapError(errF, "Unable to check if it's a fresh installation of CDS")

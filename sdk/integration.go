@@ -168,14 +168,14 @@ func (config IntegrationConfig) Clone() IntegrationConfig {
 }
 
 // EncryptSecrets encrypt secrets given a cypher func
-func (config IntegrationConfig) EncryptSecrets(encryptFunc func(string) (string, error)) error {
+func (config IntegrationConfig) EncryptSecrets(encryptFunc func(src interface{}, dst *[]byte, extra []interface{}) error) error {
 	for k, v := range config {
 		if v.Type == IntegrationConfigTypePassword {
-			s, errS := encryptFunc(v.Value)
-			if errS != nil {
-				return WrapError(errS, "EncryptSecrets> Cannot encrypt password")
+			var btes []byte
+			if err := encryptFunc(v.Value, &btes, []interface{}{k}); err != nil {
+				return WrapError(err, "EncryptSecrets> Cannot encrypt password")
 			}
-			v.Value = s
+			v.Value = string(btes)
 			config[k] = v
 		}
 	}
@@ -183,12 +183,12 @@ func (config IntegrationConfig) EncryptSecrets(encryptFunc func(string) (string,
 }
 
 // DecryptSecrets decrypt secrets given a cypher func
-func (config IntegrationConfig) DecryptSecrets(decryptFunc func(string) (string, error)) error {
+func (config IntegrationConfig) DecryptSecrets(decryptFunc func(src []byte, dest interface{}, extra []interface{}) error) error {
 	for k, v := range config {
 		if v.Type == IntegrationConfigTypePassword {
-			s, errS := decryptFunc(v.Value)
-			if errS != nil {
-				return WrapError(errS, "DecryptSecrets> Cannot descrypt password")
+			var s string
+			if err := decryptFunc([]byte(v.Value), &s, []interface{}{k}); err != nil {
+				return WrapError(err, "DecryptSecrets> Cannot descrypt password")
 			}
 			v.Value = s
 			config[k] = v

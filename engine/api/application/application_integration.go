@@ -7,7 +7,6 @@ import (
 	"github.com/go-gorp/gorp"
 
 	"github.com/ovh/cds/engine/api/database/gorpmapping"
-	"github.com/ovh/cds/engine/api/secret"
 	"github.com/ovh/cds/sdk"
 )
 
@@ -48,10 +47,9 @@ func LoadDeploymentStrategies(db gorp.SqlExecutor, appID int64, withClearPasswor
 					if err != nil {
 						return nil, sdk.WrapError(err, "unable to decode encrypted value")
 					}
-
-					decryptedValue, err := secret.Decrypt(s)
-					if err != nil {
-						return nil, sdk.WrapError(err, "unable to decrypt secret value")
+					var decryptedValue string
+					if err := gorpmapping.Decrypt([]byte(s), &decryptedValue, []interface{}{r.Name, k, appID}); err != nil {
+						return nil, sdk.WrapError(err, "unable to decrypt secret value (%s,%s)", r.Name, k)
 					}
 
 					newCfg[k] = sdk.IntegrationConfigValue{
@@ -96,13 +94,13 @@ func SetDeploymentStrategy(db gorp.SqlExecutor, projID, appID, pfID int64, ppfNa
 	newcfg := sdk.IntegrationConfig{}
 	for k, v := range cfg {
 		if v.Type == sdk.IntegrationConfigTypePassword {
-			e, err := secret.Encrypt([]byte(v.Value))
-			if err != nil {
-				return sdk.WrapError(err, "unable to encrypt data")
+			var encryptedData []byte
+			if err := gorpmapping.Encrypt(v.Value, &encryptedData, []interface{}{ppfName, k, appID}); err != nil {
+				return err
 			}
 			newcfg[k] = sdk.IntegrationConfigValue{
 				Type:        sdk.IntegrationConfigTypePassword,
-				Value:       base64.StdEncoding.EncodeToString(e),
+				Value:       base64.StdEncoding.EncodeToString(encryptedData),
 				Description: v.Description,
 			}
 		} else {

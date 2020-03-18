@@ -8,7 +8,6 @@ import (
 
 	"github.com/ovh/cds/engine/api/database/gorpmapping"
 	"github.com/ovh/cds/engine/api/group"
-	"github.com/ovh/cds/engine/api/secret"
 	"github.com/ovh/cds/sdk"
 )
 
@@ -34,10 +33,11 @@ func (m *WorkerModel) PostInsert(s gorp.SqlExecutor) error {
 		var err error
 		if m.ModelDocker.Private {
 			if m.ModelDocker.Password != "" {
-				m.ModelDocker.Password, err = secret.EncryptValue(m.ModelDocker.Password)
-				if err != nil {
-					return sdk.WrapError(err, "cannot encrypt docker password")
+				var s []byte
+				if err := gorpmapping.Encrypt(m.ModelDocker.Password, &s, []interface{}{m.ID}); err != nil {
+					return sdk.WrapError(err, "PostInsert> Cannot encrypt password")
 				}
+				m.ModelDocker.Password = string(s)
 			}
 		} else {
 			m.ModelDocker.Username = ""

@@ -13,7 +13,6 @@ import (
 	"github.com/ovh/cds/engine/api/environment"
 	"github.com/ovh/cds/engine/api/integration"
 	"github.com/ovh/cds/engine/api/observability"
-	"github.com/ovh/cds/engine/api/secret"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/log"
 )
@@ -476,12 +475,12 @@ func LoadSecrets(db gorp.SqlExecutor, store cache.Store, nodeRun *sdk.WorkflowNo
 				if err != nil {
 					return nil, sdk.WrapError(err, "LoadSecrets> Cannot load application deployment strategies %d", app.ID)
 				}
-				start, has := strats[pp.Name]
+				strat, has := strats[pp.Name]
 
 				// Application deployment strategies variables
 				apv := []sdk.Variable{}
 				if has {
-					for k, v := range start {
+					for k, v := range strat {
 						apv = append(apv, sdk.Variable{
 							Name:  k,
 							Type:  v.Type,
@@ -494,14 +493,6 @@ func LoadSecrets(db gorp.SqlExecutor, store cache.Store, nodeRun *sdk.WorkflowNo
 				secrets = append(secrets, apv...)
 			}
 			secrets = append(secrets, pfv...)
-		}
-	}
-
-	//Decrypt secrets
-	for i := range secrets {
-		s := &secrets[i]
-		if err := secret.DecryptVariable(s); err != nil {
-			return nil, sdk.WrapError(err, "Unable to decrypt variables")
 		}
 	}
 	return secrets, nil

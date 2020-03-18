@@ -10,7 +10,6 @@ import (
 
 	"github.com/ovh/cds/engine/api/database/gorpmapping"
 	"github.com/ovh/cds/engine/api/group"
-	"github.com/ovh/cds/engine/api/secret"
 	"github.com/ovh/cds/sdk"
 )
 
@@ -157,11 +156,11 @@ func LoadByIDWithClearPassword(db gorp.SqlExecutor, id int64) (*sdk.Model, error
 	}
 
 	if model.ModelDocker.Private && model.ModelDocker.Password != "" {
-		var err error
-		model.ModelDocker.Password, err = secret.DecryptValue(model.ModelDocker.Password)
-		if err != nil {
-			return nil, sdk.WrapError(err, "cannot decrypt value for model %s", fmt.Sprintf("%s/%s", model.Group.Name, model.Name))
+		var decryptedValue string
+		if err := gorpmapping.Decrypt([]byte(model.ModelDocker.Password), &decryptedValue, []interface{}{model.ID}); err != nil {
+			return nil, sdk.WrapError(err, "LoadByIDWithClearPassword> Cannot decrypt value")
 		}
+		model.ModelDocker.Password = decryptedValue
 	}
 
 	return model, nil
@@ -243,11 +242,11 @@ func LoadAllUsableWithClearPasswordByGroupIDs(db gorp.SqlExecutor, groupIDs []in
 
 	for i := range models {
 		if models[i].ModelDocker.Private && models[i].ModelDocker.Password != "" {
-			var err error
-			models[i].ModelDocker.Password, err = secret.DecryptValue(models[i].ModelDocker.Password)
-			if err != nil {
-				return nil, sdk.WrapError(err, "cannot decrypt value for model %s", fmt.Sprintf("%s/%s", models[i].Group.Name, models[i].Name))
+			var decryptedValue string
+			if err := gorpmapping.Decrypt([]byte(models[i].ModelDocker.Password), &decryptedValue, []interface{}{models[i].ID}); err != nil {
+				return nil, sdk.WrapError(err, "LoadAllUsableWithClearPasswordByGroupIDs> Cannot decrypt value")
 			}
+			models[i].ModelDocker.Password = decryptedValue
 		}
 	}
 
