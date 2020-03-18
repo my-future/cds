@@ -2,6 +2,7 @@ package workermodel
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"sort"
 	"time"
@@ -156,8 +157,12 @@ func LoadByIDWithClearPassword(db gorp.SqlExecutor, id int64) (*sdk.Model, error
 	}
 
 	if model.ModelDocker.Private && model.ModelDocker.Password != "" {
+		str, err := base64.StdEncoding.DecodeString(model.ModelDocker.Password)
+		if err != nil {
+			return nil, sdk.WithStack(err)
+		}
 		var decryptedValue string
-		if err := gorpmapping.Decrypt([]byte(model.ModelDocker.Password), &decryptedValue, []interface{}{model.ID}); err != nil {
+		if err := gorpmapping.Decrypt([]byte(str), &decryptedValue, []interface{}{id, model.GroupID}); err != nil {
 			return nil, sdk.WrapError(err, "LoadByIDWithClearPassword> Cannot decrypt value")
 		}
 		model.ModelDocker.Password = decryptedValue
@@ -242,8 +247,12 @@ func LoadAllUsableWithClearPasswordByGroupIDs(db gorp.SqlExecutor, groupIDs []in
 
 	for i := range models {
 		if models[i].ModelDocker.Private && models[i].ModelDocker.Password != "" {
+			str, err := base64.StdEncoding.DecodeString(models[i].ModelDocker.Password)
+			if err != nil {
+				return nil, sdk.WithStack(err)
+			}
 			var decryptedValue string
-			if err := gorpmapping.Decrypt([]byte(models[i].ModelDocker.Password), &decryptedValue, []interface{}{models[i].ID}); err != nil {
+			if err := gorpmapping.Decrypt([]byte(str), &decryptedValue, []interface{}{models[i].ID, models[i].GroupID}); err != nil {
 				return nil, sdk.WrapError(err, "LoadAllUsableWithClearPasswordByGroupIDs> Cannot decrypt value")
 			}
 			models[i].ModelDocker.Password = decryptedValue

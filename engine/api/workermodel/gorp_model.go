@@ -2,6 +2,7 @@ package workermodel
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 
 	"github.com/go-gorp/gorp"
@@ -34,10 +35,11 @@ func (m *WorkerModel) PostInsert(s gorp.SqlExecutor) error {
 		if m.ModelDocker.Private {
 			if m.ModelDocker.Password != "" {
 				var s []byte
-				if err := gorpmapping.Encrypt(m.ModelDocker.Password, &s, []interface{}{m.ID}); err != nil {
+				if err := gorpmapping.Encrypt(m.ModelDocker.Password, &s, []interface{}{m.ID, m.GroupID}); err != nil {
 					return sdk.WrapError(err, "PostInsert> Cannot encrypt password")
 				}
-				m.ModelDocker.Password = string(s)
+				str := base64.StdEncoding.EncodeToString(s)
+				m.ModelDocker.Password = str
 			}
 		} else {
 			m.ModelDocker.Username = ""

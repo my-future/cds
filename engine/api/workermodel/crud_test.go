@@ -122,6 +122,11 @@ func TestUpdateModel(t *testing.T) {
 	cpy.GroupID = g2.ID
 	res, err = workermodel.Update(context.TODO(), db, res, cpy)
 	require.Error(t, err)
+
+	all, err := workermodel.LoadAllUsableWithClearPasswordByGroupIDs(db, []int64{g1.ID})
+	require.NoError(t, err)
+
+	assert.True(t, len(all) >= 1)
 }
 
 func TestCopyModelTypeData(t *testing.T) {
