@@ -85,7 +85,7 @@ func (api *API) putWorkerModelHandler() service.Handler {
 			return err
 		}
 
-		old, errLoad := workermodel.LoadByNameAndGroupIDWithClearPassword(api.mustDB(), modelName, g.ID)
+		old, errLoad := workermodel.LoadByNameAndGroupIDWithPassword(api.mustDB(), modelName, g.ID)
 		if errLoad != nil {
 			return sdk.WrapError(errLoad, "cannot load worker model")
 		}

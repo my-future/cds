@@ -171,8 +171,8 @@ func LoadByIDWithClearPassword(db gorp.SqlExecutor, id int64) (*sdk.Model, error
 	return model, nil
 }
 
-// LoadByNameAndGroupIDWithClearPassword retrieves a specific worker model in database by name and group id.
-func LoadByNameAndGroupIDWithClearPassword(db gorp.SqlExecutor, name string, groupID int64) (*sdk.Model, error) {
+// LoadByNameAndGroupIDWithPassword retrieves a specific worker model in database by name and group id.
+func LoadByNameAndGroupIDWithPassword(db gorp.SqlExecutor, name string, groupID int64) (*sdk.Model, error) {
 	query := fmt.Sprintf(`
     SELECT %s
     FROM worker_model

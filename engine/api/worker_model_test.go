@@ -157,9 +157,9 @@ func Test_addWorkerModelWithPrivateRegistryAsAdmin(t *testing.T) {
 	var newModel sdk.Model
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &newModel))
 
-	test.Equal(t, "worker --api={{.API}}", newModel.ModelDocker.Cmd, "Main worker command is not good")
-	test.Equal(t, "THIS IS A TEST", newModel.ModelDocker.Envs["CDS_TEST"], "Worker model envs are not good")
-	test.Equal(t, sdk.PasswordPlaceholder, newModel.ModelDocker.Password, "Worker model password returned are not placeholder")
+	assert.Equal(t, "worker --api={{.API}}", newModel.ModelDocker.Cmd, "Main worker command is not good")
+	assert.Equal(t, "THIS IS A TEST", newModel.ModelDocker.Envs["CDS_TEST"], "Worker model envs are not good")
+	assert.Equal(t, sdk.PasswordPlaceholder, newModel.ModelDocker.Password, "Worker model password returned are not placeholder")
 }
 
 func Test_WorkerModelUsage(t *testing.T) {
@@ -188,7 +188,7 @@ func Test_WorkerModelUsage(t *testing.T) {
 			},
 		},
 	}
-	test.NoError(t, workermodel.Insert(db, &model))
+	require.NoError(t, workermodel.Insert(db, &model))
 
 	pkey := sdk.RandomString(10)
 	proj := assets.InsertTestProject(t, db, api.Cache, pkey, pkey)
@@ -204,7 +204,7 @@ func Test_WorkerModelUsage(t *testing.T) {
 		Name:       "pip1",
 	}
 
-	test.NoError(t, pipeline.InsertPipeline(db, &pip))
+	require.NoError(t, pipeline.InsertPipeline(db, &pip))
 
 	//Insert Stage
 	stage := &sdk.Stage{
@@ -217,7 +217,7 @@ func Test_WorkerModelUsage(t *testing.T) {
 	pip.Stages = append(pip.Stages, *stage)
 
 	t.Logf("Insert Stage %s for Pipeline %s of Project %s", stage.Name, pip.Name, proj.Name)
-	test.NoError(t, pipeline.InsertStage(db, stage))
+	require.NoError(t, pipeline.InsertStage(db, stage))
 
 	//Insert Action
 	t.Logf("Insert Action script on Stage %s for Pipeline %s of Project %s", stage.Name, pip.Name, proj.Name)
@@ -237,7 +237,7 @@ func Test_WorkerModelUsage(t *testing.T) {
 		Enabled: true,
 	}
 	errJob := pipeline.InsertJob(db, job, stage.ID, &pip)
-	test.NoError(t, errJob)
+	require.NoError(t, errJob)
 	assert.NotZero(t, job.PipelineActionID)
 	assert.NotZero(t, job.Action.ID)
 
@@ -262,7 +262,7 @@ func Test_WorkerModelUsage(t *testing.T) {
 		},
 	}
 
-	test.NoError(t, workflow.Insert(context.Background(), db, api.Cache, *proj, &wf))
+	require.NoError(t, workflow.Insert(context.Background(), db, api.Cache, *proj, &wf))
 
 	//Prepare request
 	vars := map[string]string{
@@ -278,12 +278,12 @@ func Test_WorkerModelUsage(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 
 	var pipelines []sdk.Pipeline
-	test.NoError(t, json.Unmarshal(w.Body.Bytes(), &pipelines))
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &pipelines))
 
 	test.NotNil(t, pipelines)
-	test.Equal(t, 1, len(pipelines))
-	test.Equal(t, "pip1", pipelines[0].Name)
-	test.Equal(t, proj.Key, pipelines[0].ProjectKey)
+	assert.Equal(t, 1, len(pipelines))
+	assert.Equal(t, "pip1", pipelines[0].Name)
+	assert.Equal(t, proj.Key, pipelines[0].ProjectKey)
 }
 
 func Test_postWorkerModelWithWrongRequest(t *testing.T) {
@@ -519,7 +519,7 @@ func Test_postWorkerModelAsAGroupAdminWithRestrict(t *testing.T) {
 	var newModel sdk.Model
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &newModel))
 
-	test.Equal(t, "worker --api={{.API}}", newModel.ModelDocker.Cmd, "Main worker command is not good")
+	assert.Equal(t, "worker --api={{.API}}", newModel.ModelDocker.Cmd, "Main worker command is not good")
 }
 
 func Test_postWorkerModelAsAGroupAdminWithoutRestrictWithPattern(t *testing.T) {
@@ -548,7 +548,7 @@ func Test_postWorkerModelAsAGroupAdminWithoutRestrictWithPattern(t *testing.T) {
 		},
 	}
 
-	test.NoError(t, workermodel.InsertPattern(api.mustDB(), &pattern))
+	require.NoError(t, workermodel.InsertPattern(api.mustDB(), &pattern))
 
 	model := sdk.Model{
 		Name:        "Test1",
@@ -577,8 +577,8 @@ func Test_postWorkerModelAsAGroupAdminWithoutRestrictWithPattern(t *testing.T) {
 	var newModel sdk.Model
 	assert.NoError(t, json.Unmarshal(w.Body.Bytes(), &newModel))
 
-	test.Equal(t, "./worker", newModel.ModelVirtualMachine.Cmd, "Main worker command is not good")
-	test.Equal(t, "apt-get install curl -y", newModel.ModelVirtualMachine.PreCmd, "Pre worker command is not good")
+	assert.Equal(t, "./worker", newModel.ModelVirtualMachine.Cmd, "Main worker command is not good")
+	assert.Equal(t, "apt-get install curl -y", newModel.ModelVirtualMachine.PreCmd, "Pre worker command is not good")
 }
 
 func Test_postWorkerModelAsAWrongGroupMember(t *testing.T) {
@@ -799,13 +799,17 @@ func Test_putWorkerModelWithPassword(t *testing.T) {
 
 	assert.Equal(t, 200, w.Code)
 	var resp sdk.Model
-	test.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
-	test.Equal(t, sdk.PasswordPlaceholder, resp.ModelDocker.Password, "Worker model should not return password, but placeholder")
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, sdk.PasswordPlaceholder, resp.ModelDocker.Password, "Worker model should not return password, but placeholder")
 
-	wm, errL := workermodel.LoadByNameAndGroupIDWithClearPassword(api.mustDB(), resp.Name, resp.GroupID)
-	test.NoError(t, errL)
+	wm, errL := workermodel.LoadByNameAndGroupIDWithPassword(api.mustDB(), resp.Name, resp.GroupID)
+	require.NoError(t, errL)
+	assert.NotEqual(t, sdk.PasswordPlaceholder, wm.ModelDocker.Password)
 
-	test.Equal(t, "testpw", wm.ModelDocker.Password)
+	wm, err := workermodel.LoadByIDWithClearPassword(api.mustDB(), wm.ID)
+	require.NoError(t, err)
+
+	assert.Equal(t, "testpw", wm.ModelDocker.Password)
 }
 
 func Test_deleteWorkerModel(t *testing.T) {
