@@ -805,7 +805,7 @@ func Test_putWorkerModelWithPassword(t *testing.T) {
 	wm, errL := workermodel.LoadByNameAndGroupIDWithClearPassword(api.mustDB(), resp.Name, resp.GroupID)
 	test.NoError(t, errL)
 
-	test.Equal(t, "testpw", pw)
+	test.Equal(t, "testpw", wm.ModelDocker.Password)
 }
 
 func Test_deleteWorkerModel(t *testing.T) {
