@@ -266,7 +266,7 @@ func (r *Router) Handle(uri string, scope HandlerScope, handlers ...*service.Han
 		name = strings.Replace(name, ".func1", "", 1)
 		name = strings.Replace(name, ".1", "", 1)
 		name = strings.Replace(name, "github.com/ovh/cds/engine/", "", 1)
-		log.Debug("Registering handler %s on %s %s", name, handlers[i].Method, uri)
+		log.Trace("Registering handler %s on %s %s", name, handlers[i].Method, uri)
 		handlers[i].Name = name
 		cfg.Config[handlers[i].Method] = handlers[i]
 	}

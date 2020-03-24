@@ -199,7 +199,7 @@ func TestLoadByWorkflowID(t *testing.T) {
 
 	require.NoError(t, workflow.Insert(context.TODO(), db, cache, *proj, &w))
 
-	actuals, err := application.LoadByWorkflowID(db, w.ID)
+	actuals, err := application.LoadByWorkflowID(db, cache, w.ID)
 	assert.NoError(t, err)
 
 	assert.Equal(t, 1, len(actuals))

@@ -53,7 +53,11 @@ func SetLogger(l Logger) {
 }
 
 func logWithLogger(level, format string, values ...interface{}) {
-	logger.Logf("["+level+"] "+format, values...)
+	if level == "TRACE" {
+		return
+	}
+	prefix := fmt.Sprintf("%7s", level)
+	logger.Logf("["+prefix+"] "+format, values...)
 }
 
 // Initialize init log level
@@ -133,6 +137,15 @@ func Initialize(conf *Conf) {
 			hook.Flush()
 		}
 	}()
+}
+
+// Trace prints trace log
+func Trace(format string, values ...interface{}) {
+	if logger != nil {
+		logWithLogger("TRACE", format, values...)
+		return
+	}
+	log.Tracef(format, values...)
 }
 
 // Debug prints debug log

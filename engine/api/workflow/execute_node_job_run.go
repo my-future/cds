@@ -429,14 +429,14 @@ func LoadSecrets(db gorp.SqlExecutor, store cache.Store, nodeRun *sdk.WorkflowNo
 			av = sdk.VariablesFilter(appVariables, sdk.SecretVariable)
 			av = sdk.VariablesPrefix(av, "cds.app.")
 
-			if err := application.DecryptVCSStrategyPassword(app); err != nil {
-				return nil, sdk.WrapError(err, "LoadSecrets> Cannot decrypt vcs configuration")
+			// The application must be loaded with the vcds_strategy as clear value
+			if app.RepositoryStrategy.Password != "" {
+				av = append(av, sdk.Variable{
+					Name:  "git.http.password",
+					Type:  sdk.SecretVariable,
+					Value: app.RepositoryStrategy.Password,
+				})
 			}
-			av = append(av, sdk.Variable{
-				Name:  "git.http.password",
-				Type:  sdk.SecretVariable,
-				Value: app.RepositoryStrategy.Password,
-			})
 		}
 		secrets = append(secrets, av...)
 

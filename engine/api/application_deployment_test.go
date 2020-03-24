@@ -7,18 +7,17 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ovh/cds/engine/api/authentication"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/ovh/cds/engine/api/application"
+	"github.com/ovh/cds/engine/api/authentication"
 	"github.com/ovh/cds/engine/api/authentication/builtin"
 	"github.com/ovh/cds/engine/api/integration"
-	"github.com/ovh/cds/engine/api/test"
 	"github.com/ovh/cds/engine/api/test/assets"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/cdsclient"
+	"github.com/ovh/cds/sdk/log"
 )
 
 func Test_getApplicationDeploymentStrategiesConfigHandler(t *testing.T) {
@@ -30,7 +29,7 @@ func Test_getApplicationDeploymentStrategiesConfigHandler(t *testing.T) {
 	app := &sdk.Application{
 		Name: sdk.RandomString(10),
 	}
-	test.NoError(t, application.Insert(api.mustDB(), api.Cache, *proj, app))
+	require.NoError(t, application.Insert(api.mustDB(), api.Cache, *proj, app))
 
 	vars := map[string]string{
 		"permProjectKey":  proj.Key,
@@ -39,7 +38,7 @@ func Test_getApplicationDeploymentStrategiesConfigHandler(t *testing.T) {
 
 	uri := router.GetRoute("GET", api.getApplicationDeploymentStrategiesConfigHandler, vars)
 	req, err := http.NewRequest("GET", uri, nil)
-	test.NoError(t, err)
+	require.NoError(t, err)
 	assets.AuthentifyRequest(t, req, u, pass)
 
 	// Do the request
@@ -57,13 +56,13 @@ func Test_postApplicationDeploymentStrategyConfigHandler(t *testing.T) {
 	app := &sdk.Application{
 		Name: sdk.RandomString(10),
 	}
-	test.NoError(t, application.Insert(api.mustDB(), api.Cache, *proj, app))
+	require.NoError(t, application.Insert(api.mustDB(), api.Cache, *proj, app))
 
 	pf := sdk.IntegrationModel{
 		Name:       "test-deploy-post-2" + pkey,
 		Deployment: true,
 	}
-	test.NoError(t, integration.InsertModel(db, &pf))
+	require.NoError(t, integration.InsertModel(db, &pf))
 	defer func() { _ = integration.DeleteModel(db, pf.ID) }()
 
 	pp := sdk.ProjectIntegration{
@@ -82,7 +81,9 @@ func Test_postApplicationDeploymentStrategyConfigHandler(t *testing.T) {
 			},
 		},
 	}
-	test.NoError(t, integration.InsertIntegration(db, &pp))
+	require.NoError(t, integration.InsertIntegration(db, &pp))
+
+	log.Debug("-------")
 
 	vars := map[string]string{
 		"permProjectKey":  proj.Key,
@@ -105,7 +106,7 @@ func Test_postApplicationDeploymentStrategyConfigHandler(t *testing.T) {
 	// Do the request
 	w := httptest.NewRecorder()
 	router.Mux.ServeHTTP(w, req)
-	assert.Equal(t, 200, w.Code)
+	require.Equal(t, 200, w.Code)
 
 	//Then we try to update
 	req = assets.NewAuthentifiedRequest(t, u, pass, "POST", uri, sdk.IntegrationConfig{
@@ -122,7 +123,7 @@ func Test_postApplicationDeploymentStrategyConfigHandler(t *testing.T) {
 	// Do the request
 	w = httptest.NewRecorder()
 	router.Mux.ServeHTTP(w, req)
-	assert.Equal(t, 200, w.Code)
+	require.Equal(t, 200, w.Code)
 
 	uri = router.GetRoute("GET", api.getApplicationDeploymentStrategyConfigHandler, vars)
 	//Then we try to update
@@ -130,11 +131,11 @@ func Test_postApplicationDeploymentStrategyConfigHandler(t *testing.T) {
 	// Do the request
 	w = httptest.NewRecorder()
 	router.Mux.ServeHTTP(w, req)
-	assert.Equal(t, 200, w.Code)
+	require.Equal(t, 200, w.Code)
 
 	cfg := sdk.IntegrationConfig{}
-	test.NoError(t, json.Unmarshal(w.Body.Bytes(), &cfg))
-	assert.Equal(t, sdk.PasswordPlaceholder, cfg["token"].Value)
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &cfg))
+	require.Equal(t, sdk.PasswordPlaceholder, cfg["token"].Value)
 
 	// with clear paswword
 	uri = router.GetRoute("GET", api.getApplicationDeploymentStrategyConfigHandler, vars)
@@ -150,7 +151,7 @@ func Test_postApplicationDeploymentStrategyConfigHandler(t *testing.T) {
 	assert.Equal(t, 200, w.Code)
 
 	cfg2 := sdk.IntegrationConfig{}
-	test.NoError(t, json.Unmarshal(w.Body.Bytes(), &cfg2))
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &cfg2))
 	assert.Equal(t, "my-secret-token-2", cfg2["token"].Value)
 
 	// with clear paswword
@@ -180,13 +181,13 @@ func Test_postApplicationDeploymentStrategyConfigHandler_InsertTwoDifferentInteg
 	app := &sdk.Application{
 		Name: sdk.RandomString(10),
 	}
-	test.NoError(t, application.Insert(api.mustDB(), api.Cache, *proj, app))
+	require.NoError(t, application.Insert(api.mustDB(), api.Cache, *proj, app))
 
 	pf := sdk.IntegrationModel{
 		Name:       "test-deploy-TwoDifferentIntegrations-2" + pkey,
 		Deployment: true,
 	}
-	test.NoError(t, integration.InsertModel(db, &pf))
+	require.NoError(t, integration.InsertModel(db, &pf))
 	defer func() { _ = integration.DeleteModel(db, pf.ID) }()
 
 	pp := sdk.ProjectIntegration{
@@ -205,7 +206,7 @@ func Test_postApplicationDeploymentStrategyConfigHandler_InsertTwoDifferentInteg
 			},
 		},
 	}
-	test.NoError(t, integration.InsertIntegration(db, &pp))
+	require.NoError(t, integration.InsertIntegration(db, &pp))
 
 	pp2 := sdk.ProjectIntegration{
 		Model:              pf,
@@ -223,7 +224,7 @@ func Test_postApplicationDeploymentStrategyConfigHandler_InsertTwoDifferentInteg
 			},
 		},
 	}
-	test.NoError(t, integration.InsertIntegration(db, &pp2))
+	require.NoError(t, integration.InsertIntegration(db, &pp2))
 
 	vars := map[string]string{
 		"permProjectKey":  proj.Key,
@@ -285,7 +286,7 @@ func Test_postApplicationDeploymentStrategyConfigHandler_InsertTwoDifferentInteg
 	assert.Equal(t, 200, w.Code)
 
 	cfg := map[string]sdk.IntegrationConfig{}
-	test.NoError(t, json.Unmarshal(w.Body.Bytes(), &cfg))
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &cfg))
 	assert.Len(t, cfg, 2)
 
 }
@@ -310,7 +311,7 @@ func Test_postApplicationDeploymentStrategyConfigHandlerAsProvider(t *testing.T)
 	app := &sdk.Application{
 		Name: sdk.RandomString(10),
 	}
-	test.NoError(t, application.Insert(api.mustDB(), api.Cache, *proj, app))
+	require.NoError(t, application.Insert(api.mustDB(), api.Cache, *proj, app))
 
 	pf := sdk.IntegrationModel{
 		Name:       "test-deploy-3" + pkey,
@@ -326,7 +327,7 @@ func Test_postApplicationDeploymentStrategyConfigHandlerAsProvider(t *testing.T)
 			},
 		},
 	}
-	test.NoError(t, integration.InsertModel(api.mustDB(), &pf))
+	require.NoError(t, integration.InsertModel(api.mustDB(), &pf))
 	defer func() { _ = integration.DeleteModel(api.mustDB(), pf.ID) }()
 
 	pp := sdk.ProjectIntegration{
@@ -335,7 +336,7 @@ func Test_postApplicationDeploymentStrategyConfigHandlerAsProvider(t *testing.T)
 		IntegrationModelID: pf.ID,
 		ProjectID:          proj.ID,
 	}
-	test.NoError(t, integration.InsertIntegration(api.mustDB(), &pp))
+	require.NoError(t, integration.InsertIntegration(api.mustDB(), &pp))
 
 	sdkclient := cdsclient.NewProviderClient(cdsclient.ProviderConfig{
 		Host:  tsURL,
@@ -348,10 +349,10 @@ func Test_postApplicationDeploymentStrategyConfigHandlerAsProvider(t *testing.T)
 			Value: "my-secret-token-2",
 		},
 	})
-	test.NoError(t, err)
+	require.NoError(t, err)
 
 	cfg, err := application.LoadDeploymentStrategies(api.mustDB(), app.ID, true)
-	test.NoError(t, err)
+	require.NoError(t, err)
 
 	var assertCfg = func(key string, cfg sdk.IntegrationConfig, expected sdk.IntegrationConfigValue) {
 		actual, has := cfg[key]

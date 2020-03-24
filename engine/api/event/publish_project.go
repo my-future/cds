@@ -155,7 +155,7 @@ func PublishDeleteVCSServer(ctx context.Context, p *sdk.Project, vcsServerName s
 
 // PublishAddProjectIntegration publishes an event on adding a integration
 func PublishAddProjectIntegration(ctx context.Context, p *sdk.Project, pf sdk.ProjectIntegration, u sdk.Identifiable) {
-	pf.HideSecrets()
+	pf.Blur()
 	e := sdk.EventProjectIntegrationAdd{
 		Integration: pf,
 	}
@@ -164,8 +164,8 @@ func PublishAddProjectIntegration(ctx context.Context, p *sdk.Project, pf sdk.Pr
 
 // PublishUpdateProjectIntegration publishes an event on updating a integration
 func PublishUpdateProjectIntegration(ctx context.Context, p *sdk.Project, pf sdk.ProjectIntegration, pfOld sdk.ProjectIntegration, u sdk.Identifiable) {
-	pf.HideSecrets()
-	pfOld.HideSecrets()
+	pf.Blur()
+	pfOld.Blur()
 	e := sdk.EventProjectIntegrationUpdate{
 		NewsIntegration: pf,
 		OldIntegration:  pfOld,

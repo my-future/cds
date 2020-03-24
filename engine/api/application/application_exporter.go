@@ -14,15 +14,11 @@ import (
 // Export an application
 func Export(db gorp.SqlExecutor, cache cache.Store, key string, appName string, f exportentities.Format, encryptFunc sdk.EncryptFunc, w io.Writer) (int, error) {
 	// Load app
-	app, errload := LoadByName(db, cache, key, appName,
+	app, err := LoadByNameWithClearVCSStrategyPassword(db, cache, key, appName,
 		LoadOptions.WithVariablesWithClearPassword, LoadOptions.WithClearKeys, LoadOptions.WithClearDeploymentStrategies,
 	)
-	if errload != nil {
-		return 0, sdk.WrapError(errload, "application.Export> Cannot load application %s", appName)
-	}
-
-	if errD := DecryptVCSStrategyPassword(app); errD != nil {
-		return 0, sdk.WrapError(errD, "application.Export> Cannot decrypt vcs password")
+	if err != nil {
+		return 0, sdk.WrapError(err, "application.Export> Cannot load application %s", appName)
 	}
 
 	return ExportApplication(db, *app, f, encryptFunc, w)

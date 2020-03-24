@@ -21,29 +21,30 @@ type LoadOptionFunc func(gorp.SqlExecutor, cache.Store, *sdk.Project) error
 
 // LoadOptions provides all options on project loads functions
 var LoadOptions = struct {
-	Default                                 LoadOptionFunc
-	WithIcon                                LoadOptionFunc
-	WithApplications                        LoadOptionFunc
-	WithApplicationNames                    LoadOptionFunc
-	WithVariables                           LoadOptionFunc
-	WithVariablesWithClearPassword          LoadOptionFunc
-	WithPipelines                           LoadOptionFunc
-	WithPipelineNames                       LoadOptionFunc
-	WithEnvironments                        LoadOptionFunc
-	WithEnvironmentNames                    LoadOptionFunc
-	WithGroups                              LoadOptionFunc
-	WithPermission                          LoadOptionFunc
-	WithApplicationVariables                LoadOptionFunc
-	WithApplicationWithDeploymentStrategies LoadOptionFunc
-	WithKeys                                LoadOptionFunc
-	WithWorkflows                           LoadOptionFunc
-	WithWorkflowNames                       LoadOptionFunc
-	WithClearKeys                           LoadOptionFunc
-	WithIntegrations                        LoadOptionFunc
-	WithClearIntegrations                   LoadOptionFunc
-	WithFavorites                           func(uID string) LoadOptionFunc
-	WithFeatures                            LoadOptionFunc
-	WithLabels                              LoadOptionFunc
+	Default                                     LoadOptionFunc
+	WithIcon                                    LoadOptionFunc
+	WithApplications                            LoadOptionFunc
+	WithApplicationNames                        LoadOptionFunc
+	WithVariables                               LoadOptionFunc
+	WithVariablesWithClearPassword              LoadOptionFunc
+	WithPipelines                               LoadOptionFunc
+	WithPipelineNames                           LoadOptionFunc
+	WithEnvironments                            LoadOptionFunc
+	WithEnvironmentNames                        LoadOptionFunc
+	WithGroups                                  LoadOptionFunc
+	WithPermission                              LoadOptionFunc
+	WithApplicationVariables                    LoadOptionFunc
+	WithApplicationWithDeploymentStrategies     LoadOptionFunc
+	WithKeys                                    LoadOptionFunc
+	WithWorkflows                               LoadOptionFunc
+	WithWorkflowNames                           LoadOptionFunc
+	WithClearKeys                               LoadOptionFunc
+	WithIntegrations                            LoadOptionFunc
+	WithClearIntegrations                       LoadOptionFunc
+	WithFavorites                               func(uID string) LoadOptionFunc
+	WithFeatures                                LoadOptionFunc
+	WithLabels                                  LoadOptionFunc
+	WithApplicationWithClearVCSStrategyPassword LoadOptionFunc
 }{
 	Default:                                 loadDefault,
 	WithIcon:                                loadIcon,
@@ -67,6 +68,7 @@ var LoadOptions = struct {
 	WithFeatures:                            loadFeatures,
 	WithApplicationWithDeploymentStrategies: loadApplicationWithDeploymentStrategies,
 	WithLabels:                              loadLabels,
+	WithApplicationWithClearVCSStrategyPassword: loadApplicationWithClearVCSStrategyPassword,
 }
 
 func loadDefault(db gorp.SqlExecutor, store cache.Store, proj *sdk.Project) error {
@@ -92,6 +94,22 @@ func loadApplicationNames(db gorp.SqlExecutor, store cache.Store, proj *sdk.Proj
 		return sdk.WithStack(err)
 	}
 	proj.ApplicationNames = apps
+	return nil
+}
+
+func loadApplicationWithClearVCSStrategyPassword(db gorp.SqlExecutor, store cache.Store, proj *sdk.Project) error {
+	if proj.Applications == nil {
+		if err := loadApplications(db, store, proj); err != nil {
+			return sdk.WithStack(err)
+		}
+	}
+	for i := range proj.Applications {
+		app, err := application.LoadByIDWithClearVCSStrategyPassword(db, store, proj.Applications[i].ID)
+		if err != nil {
+			return err
+		}
+		proj.Applications[i] = *app
+	}
 	return nil
 }
 

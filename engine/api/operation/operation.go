@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-gorp/gorp"
 
-	"github.com/ovh/cds/engine/api/application"
 	"github.com/ovh/cds/engine/api/cache"
 	"github.com/ovh/cds/engine/api/repositoriesmanager"
 	"github.com/ovh/cds/engine/api/services"
@@ -27,9 +26,7 @@ func PushOperation(ctx context.Context, db gorp.SqlExecutor, store cache.Store, 
 		}
 		vcsStrategy.SSHKeyContent = key.Private
 	} else {
-		if err := application.DecryptVCSStrategyPassword(app); err != nil {
-			return nil, sdk.WrapError(err, "unable to decrypt vcs strategy")
-		}
+		// The application need to be loaded with the right vcs_strategy_loader
 		vcsStrategy = app.RepositoryStrategy
 	}
 

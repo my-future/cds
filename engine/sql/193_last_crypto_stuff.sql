@@ -4,11 +4,19 @@
 CREATE TABLE application_deployment_strategy_tmp AS SELECT * FROM application_deployment_strategy;
 ALTER TABLE application_deployment_strategy_tmp ADD PRIMARY KEY (application_id, project_platform_id);
 ALTER TABLE "application_deployment_strategy" ADD COLUMN IF NOT EXISTS migrate BOOLEAN;
+ALTER TABLE "application_deployment_strategy" ADD COLUMN IF NOT EXISTS id SERIAL;
+ALTER TABLE "application_deployment_strategy" ADD COLUMN IF NOT EXISTS cipher_config BYTEA;
+ALTER TABLE "application_deployment_strategy" ADD COLUMN IF NOT EXISTS sig BYTEA;
+ALTER TABLE "application_deployment_strategy" ADD COLUMN IF NOT EXISTS signer TEXT;
 
 -- RefactorProjectIntegration
 CREATE TABLE project_integration_tmp AS SELECT * FROM project_integration;
 ALTER TABLE project_integration_tmp ADD PRIMARY KEY (id);
 ALTER TABLE "project_integration" ADD COLUMN IF NOT EXISTS migrate BOOLEAN;
+ALTER TABLE "project_integration" ADD COLUMN IF NOT EXISTS cipher_config BYTEA;
+ALTER TABLE "project_integration" ADD COLUMN IF NOT EXISTS sig BYTEA;
+ALTER TABLE "project_integration" ADD COLUMN IF NOT EXISTS signer TEXT;
+
 
 -- RefactorWorkerModel
 CREATE TABLE worker_model_tmp AS SELECT * FROM worker_model;
@@ -23,13 +31,18 @@ ALTER TABLE "project" ADD COLUMN IF NOT EXISTS migrate BOOLEAN;
 -- RefactorApplicationVCS
 CREATE TABLE application_tmp AS SELECT * FROM "application";
 ALTER TABLE application_tmp ADD PRIMARY KEY (id);
-ALTER TABLE "application" ADD COLUMN IF NOT EXISTS migrate BOOLEAN;
+ALTER TABLE "application" ADD COLUMN IF NOT EXISTS cipher_vcs_strategy BYTEA;
+ALTER TABLE "application" ADD COLUMN IF NOT EXISTS sig BYTEA;
+ALTER TABLE "application" ADD COLUMN IF NOT EXISTS signer TEXT;
+
 
 -- RefactorIntegrationModel
 CREATE TABLE integration_model_tmp AS SELECT * FROM integration_model;
 ALTER TABLE integration_model_tmp ADD PRIMARY KEY (id);
 ALTER TABLE "integration_model" ADD COLUMN IF NOT EXISTS migrate BOOLEAN;
-
+ALTER TABLE "integration_model" ADD COLUMN IF NOT EXISTS cipher_public_configurations BYTEA;
+ALTER TABLE "integration_model" ADD COLUMN IF NOT EXISTS sig BYTEA;
+ALTER TABLE "integration_model" ADD COLUMN IF NOT EXISTS signer TEXT;
 -- +migrate Down
 
 ALTER TABLE "application_deployment_strategy" DROP COLUMN migrate;

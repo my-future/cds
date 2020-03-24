@@ -418,14 +418,14 @@ func (api *API) updateApplicationHandler() service.Handler {
 		projectKey := vars[permProjectKey]
 		applicationName := vars["applicationName"]
 
-		p, errload := project.Load(api.mustDB(), api.Cache, projectKey, project.LoadOptions.Default)
-		if errload != nil {
-			return sdk.WrapError(errload, "updateApplicationHandler> Cannot load project %s", projectKey)
+		p, err := project.Load(api.mustDB(), api.Cache, projectKey, project.LoadOptions.Default)
+		if err != nil {
+			return err
 		}
 
-		app, errloadbyname := application.LoadByName(api.mustDB(), api.Cache, projectKey, applicationName, application.LoadOptions.Default)
-		if errloadbyname != nil {
-			return sdk.WrapError(errloadbyname, "updateApplicationHandler> Cannot load application %s", applicationName)
+		app, err := application.LoadByName(api.mustDB(), api.Cache, projectKey, applicationName, application.LoadOptions.Default)
+		if err != nil {
+			return err
 		}
 
 		if app.FromRepository != "" {
@@ -443,11 +443,6 @@ func (api *API) updateApplicationHandler() service.Handler {
 			return sdk.WrapError(sdk.ErrInvalidApplicationPattern, "updateApplicationHandler> Application name %s do not respect pattern %s", appPost.Name, sdk.NamePattern)
 		}
 
-		if appPost.RepositoryStrategy.Password != sdk.PasswordPlaceholder && appPost.RepositoryStrategy.Password != "" {
-			if errP := application.EncryptVCSStrategyPassword(&appPost); errP != nil {
-				return sdk.WrapError(errP, "updateApplicationHandler> Cannot encrypt password")
-			}
-		}
 		if appPost.RepositoryStrategy.Password == sdk.PasswordPlaceholder {
 			appPost.RepositoryStrategy.Password = app.RepositoryStrategy.Password
 		}

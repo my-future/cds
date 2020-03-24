@@ -148,9 +148,6 @@ func ParseAndImport(ctx context.Context, db gorp.SqlExecutor, cache cache.Store,
 			return app, msgList, sdk.WrapError(sdk.NewError(sdk.ErrWrongRequest, err), "unable to decrypt vcs password")
 		}
 		app.RepositoryStrategy.Password = clearPWD
-		if errE := EncryptVCSStrategyPassword(app); errE != nil {
-			return app, msgList, sdk.WrapError(errE, "cannot encrypt vcs password")
-		}
 	}
 
 	// deployment strategies

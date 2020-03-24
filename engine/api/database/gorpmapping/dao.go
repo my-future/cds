@@ -12,6 +12,7 @@ import (
 
 	"github.com/ovh/cds/engine/api/observability"
 	"github.com/ovh/cds/sdk"
+	"github.com/ovh/cds/sdk/log"
 )
 
 func checkDatabase(db gorp.SqlExecutor) error {
@@ -26,6 +27,13 @@ func Insert(db gorp.SqlExecutor, i interface{}) error {
 	if err := checkDatabase(db); err != nil {
 		return err
 	}
+
+	mapping, has := getTabbleMapping(i)
+	if !has {
+		return sdk.WithStack(fmt.Errorf("unkown entity %T", i))
+	}
+
+	log.Debug("application.Insert> %T is an encrypted entity ?: %v", i, mapping.EncryptedEntity)
 
 	err := db.Insert(i)
 	if e, ok := err.(*pq.Error); ok {
