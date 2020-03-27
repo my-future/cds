@@ -10,6 +10,18 @@ import (
 	"github.com/ovh/cds/sdk/log"
 )
 
+type dbProjectKey struct {
+	gorpmapping.SignedEntity
+	sdk.ProjectKey
+}
+
+func (e dbProjectKey) Canonical() gorpmapping.CanonicalForms {
+	var _ = []interface{}{e.ProjectID, e.ID, e.Name}
+	return gorpmapping.CanonicalForms{
+		"{{print .ProjectID}}{{print .ID}}{{.Name}}",
+	}
+}
+
 // InsertKey a new project key in database
 func InsertKey(db gorp.SqlExecutor, key *sdk.ProjectKey) error {
 	var dbProjKey = dbProjectKey{ProjectKey: *key}

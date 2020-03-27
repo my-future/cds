@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/go-gorp/gorp"
-
-	"github.com/ovh/cds/engine/api/cache"
 	"github.com/ovh/cds/engine/api/observability"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/tracingutils"
@@ -21,7 +18,7 @@ type nodeRunContext struct {
 	NodeGroups         []sdk.GroupPermission
 }
 
-func processWorkflowDataRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project, wr *sdk.WorkflowRun, hookEvent *sdk.WorkflowNodeRunHookEvent, manual *sdk.WorkflowNodeRunManual, startingFromNode *int64) (*ProcessorReport, bool, error) {
+func (p processor) processWorkflowDataRun(ctx context.Context, wr *sdk.WorkflowRun, hookEvent *sdk.WorkflowNodeRunHookEvent, manual *sdk.WorkflowNodeRunManual, startingFromNode *int64) (*ProcessorReport, bool, error) {
 	//TRACEABILITY
 	var end func()
 	ctx, end = observability.Span(ctx, "workflow.processWorkflowDataRun",
@@ -42,7 +39,7 @@ func processWorkflowDataRun(ctx context.Context, db gorp.SqlExecutor, store cach
 		wr.Header.Set(tracingutils.SampledHeader, "1")
 		wr.Header.Set(tracingutils.TraceIDHeader, fmt.Sprintf("%v", observability.Current(ctx).SpanContext().TraceID))
 	}
-	//////
+	//
 
 	//// Process Report
 	oldStatus := wr.Status
@@ -62,7 +59,7 @@ func processWorkflowDataRun(ctx context.Context, db gorp.SqlExecutor, store cach
 
 	//Checks startingFromNode
 	if startingFromNode != nil {
-		r1, conditionOK, err := processStartFromNode(ctx, db, store, proj, wr, mapNodes, startingFromNode, maxsn, hookEvent, manual)
+		r1, conditionOK, err := p.processStartFromNode(ctx, wr, mapNodes, startingFromNode, maxsn, hookEvent, manual)
 		if err != nil {
 			return nil, false, sdk.WrapError(err, "unable to processStartFromNode")
 		}
@@ -79,7 +76,7 @@ func processWorkflowDataRun(ctx context.Context, db gorp.SqlExecutor, store cach
 
 	//Checks the root
 	if len(wr.WorkflowNodeRuns) == 0 {
-		r1, conditionOK, err := processStartFromRootNode(ctx, db, store, proj, wr, mapNodes, hookEvent, manual)
+		r1, conditionOK, err := p.processStartFromRootNode(ctx, wr, mapNodes, hookEvent, manual)
 		if err != nil {
 			return nil, false, sdk.WrapError(err, "unable to processStartFromRootNode")
 		}
@@ -115,7 +112,7 @@ func processWorkflowDataRun(ctx context.Context, db gorp.SqlExecutor, store cach
 	return report, true, nil
 }
 
-func computeAndUpdateWorkflowRunStatus(ctx context.Context, db gorp.SqlExecutor, wr *sdk.WorkflowRun) (*ProcessorReport, error) {
+func (p processor) computeAndUpdateWorkflowRunStatus(ctx context.Context, wr *sdk.WorkflowRun) (*ProcessorReport, error) {
 	report := new(ProcessorReport)
 	// Recompute status counter, it's mandatory to resync
 	// the map of workflow node runs of the workflow run to get the right statuses

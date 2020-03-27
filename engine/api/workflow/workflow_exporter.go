@@ -4,8 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	v2 "github.com/ovh/cds/sdk/exportentities/v2"
 	"io"
+
+	v2 "github.com/ovh/cds/sdk/exportentities/v2"
 
 	"github.com/go-gorp/gorp"
 

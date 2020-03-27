@@ -38,18 +38,14 @@ func deepFields(iface interface{}) []reflect.StructField {
 
 	for i := 0; i < ift.NumField(); i++ {
 		v := ifv.Field(i)
-		dbTag, ok := ift.Field(i).Tag.Lookup("db")
-		if !ok {
-			continue
-		}
-
+		dbTag, hasDBTag := ift.Field(i).Tag.Lookup("db")
 		tagValues := strings.Split(dbTag, ",")
 		if len(tagValues) >= 0 && tagValues[0] == "-" {
 			continue
 		}
 
-		switch v.Kind() {
-		case reflect.Struct:
+		switch {
+		case v.Kind() == reflect.Struct && !hasDBTag:
 			fields = append(fields, deepFields(v.Interface())...)
 		default:
 			fields = append(fields, ift.Field(i))

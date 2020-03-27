@@ -6,14 +6,13 @@ import (
 	"strings"
 
 	"github.com/fsamin/go-dump"
-	"github.com/go-gorp/gorp"
 
 	"github.com/ovh/cds/engine/api/observability"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/interpolate"
 )
 
-func getNodeJobRunParameters(db gorp.SqlExecutor, j sdk.Job, run *sdk.WorkflowNodeRun, stage *sdk.Stage) ([]sdk.Parameter, *sdk.MultiError) {
+func (p processor) getNodeJobRunParameters(j sdk.Job, run *sdk.WorkflowNodeRun, stage *sdk.Stage) ([]sdk.Parameter, *sdk.MultiError) {
 	params := run.BuildParameters
 	tmp := map[string]string{
 		"cds.stage": stage.Name,
@@ -37,7 +36,7 @@ func getNodeJobRunParameters(db gorp.SqlExecutor, j sdk.Job, run *sdk.WorkflowNo
 }
 
 // getBuildParameterFromNodeContext returns the parameters compute from  node context (project, application,  pipeline, pyaload)
-func getBuildParameterFromNodeContext(proj sdk.Project, w *sdk.Workflow, runContext nodeRunContext, pipelineParameters []sdk.Parameter, payload interface{}, hookEvent *sdk.WorkflowNodeRunHookEvent) ([]sdk.Parameter, error) {
+func (p processor) getBuildParameterFromNodeContext(proj sdk.Project, w *sdk.Workflow, runContext nodeRunContext, pipelineParameters []sdk.Parameter, payload interface{}, hookEvent *sdk.WorkflowNodeRunHookEvent) ([]sdk.Parameter, error) {
 	tmpProj := sdk.ParametersFromProjectVariables(proj)
 	vars := make(map[string]string, len(tmpProj))
 	for k, v := range tmpProj {
@@ -146,7 +145,7 @@ func getBuildParameterFromNodeContext(proj sdk.Project, w *sdk.Workflow, runCont
 	return params, nil
 }
 
-func getParentParameters(w *sdk.WorkflowRun, nodeRuns []*sdk.WorkflowNodeRun) ([]sdk.Parameter, error) {
+func (p processor) getParentParameters(w *sdk.WorkflowRun, nodeRuns []*sdk.WorkflowNodeRun) ([]sdk.Parameter, error) {
 	params := make([]sdk.Parameter, 0, len(nodeRuns))
 	for _, parentNodeRun := range nodeRuns {
 		var nodeName string
@@ -198,7 +197,7 @@ func getParentParameters(w *sdk.WorkflowRun, nodeRuns []*sdk.WorkflowNodeRun) ([
 	return params, nil
 }
 
-func getNodeRunBuildParameters(ctx context.Context, proj sdk.Project, wr *sdk.WorkflowRun, run *sdk.WorkflowNodeRun, runContext nodeRunContext) ([]sdk.Parameter, error) {
+func (p processor) getNodeRunBuildParameters(ctx context.Context, wr *sdk.WorkflowRun, run *sdk.WorkflowNodeRun, runContext nodeRunContext) ([]sdk.Parameter, error) {
 	ctx, end := observability.Span(ctx, "workflow.getNodeRunBuildParameters",
 		observability.Tag(observability.TagWorkflow, wr.Workflow.Name),
 		observability.Tag(observability.TagWorkflowRun, wr.Number),

@@ -40,7 +40,7 @@ func syncJobInNodeRun(n *sdk.WorkflowNodeRun, j *sdk.WorkflowNodeJobRun, stageIn
 	}
 }
 
-func syncTakeJobInNodeRun(ctx context.Context, db gorp.SqlExecutor, n *sdk.WorkflowNodeRun, j *sdk.WorkflowNodeJobRun, stageIndex int) (*ProcessorReport, error) {
+func (p processor) syncTakeJobInNodeRun(ctx context.Context, n *sdk.WorkflowNodeRun, j *sdk.WorkflowNodeJobRun, stageIndex int) (*ProcessorReport, error) {
 	_, end := observability.Span(ctx, "workflow.syncTakeJobInNodeRun")
 	defer end()
 
@@ -93,13 +93,13 @@ func syncTakeJobInNodeRun(ctx context.Context, db gorp.SqlExecutor, n *sdk.Workf
 	}
 
 	// Save the node run in database
-	if err := updateNodeRunStatusAndStage(db, n); err != nil {
+	if err := p.updateNodeRunStatusAndStage(n); err != nil {
 		return nil, sdk.WrapError(fmt.Errorf("Unable to update node id=%d at status %s. err:%s", n.ID, n.Status, err), "workflow.syncTakeJobInNodeRun> Unable to execute node")
 	}
 	return report, nil
 }
 
-func executeNodeRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project, nr *sdk.WorkflowNodeRun) (*ProcessorReport, error) {
+func (p processor) executeNodeRun(ctx context.Context, nr *sdk.WorkflowNodeRun) (*ProcessorReport, error) {
 	var end func()
 	ctx, end = observability.Span(ctx, "workflow.executeNodeRun",
 		observability.Tag(observability.TagWorkflowRun, nr.Number),
@@ -107,7 +107,7 @@ func executeNodeRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store,
 		observability.Tag("workflow_node_run_status", nr.Status),
 	)
 	defer end()
-	wr, errWr := LoadRunByID(db, nr.WorkflowRunID, LoadRunOptions{})
+	wr, errWr := LoadRunByID(p.db, nr.WorkflowRunID, LoadRunOptions{})
 	if errWr != nil {
 		return nil, sdk.WrapError(errWr, "workflow.executeNodeRun> unable to load workflow run ID %d", nr.WorkflowRunID)
 	}
@@ -174,7 +174,7 @@ func executeNodeRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store,
 				//Add job to Queue
 				//Insert data in workflow_node_run_job
 				log.Debug("workflow.executeNodeRun> stage %s call addJobsToQueue", stage.Name)
-				r, err := addJobsToQueue(ctx, db, stage, wr, nr, &previousStage)
+				r, err := p.addJobsToQueue(ctx, stage, wr, nr, &previousStage)
 				report, err = report.Merge(ctx, r, err)
 				if err != nil {
 					return report, err
@@ -216,7 +216,7 @@ func executeNodeRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store,
 			var end bool
 
 			_, next := observability.Span(ctx, "workflow.syncStage")
-			end, errSync := syncStage(ctx, db, store, stage)
+			end, errSync := p.syncStage(ctx, stage)
 			next()
 			if errSync != nil {
 				return report, errSync
@@ -273,12 +273,12 @@ func executeNodeRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store,
 	}
 
 	// Save the node run in database
-	if err := updateNodeRunStatusAndStage(db, nr); err != nil {
+	if err := p.updateNodeRunStatusAndStage(nr); err != nil {
 		return nil, sdk.WrapError(err, "unable to update node id=%d at status %s", nr.ID, nr.Status)
 	}
 
 	//Reload the workflow
-	updatedWorkflowRun, err := LoadRunByID(db, nr.WorkflowRunID, LoadRunOptions{})
+	updatedWorkflowRun, err := LoadRunByID(p.db, nr.WorkflowRunID, LoadRunOptions{})
 	if err != nil {
 		return nil, sdk.WrapError(err, "Unable to reload workflow run id=%d", nr.WorkflowRunID)
 	}
@@ -287,7 +287,7 @@ func executeNodeRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store,
 	//Delete jobs only when node is over
 	if sdk.StatusIsTerminated(nr.Status) {
 		if nr.Status != sdk.StatusStopped {
-			r1, _, err := processWorkflowDataRun(ctx, db, store, proj, updatedWorkflowRun, nil, nil, nil)
+			r1, _, err := p.processWorkflowDataRun(ctx, updatedWorkflowRun, nil, nil, nil)
 			if err != nil {
 				return nil, sdk.WrapError(err, "Unable to reprocess workflow !")
 			}
@@ -295,7 +295,7 @@ func executeNodeRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store,
 		}
 
 		//Delete the line in workflow_node_run_job
-		if err := DeleteNodeJobRuns(db, nr.ID); err != nil {
+		if err := DeleteNodeJobRuns(p.db, nr.ID); err != nil {
 			return nil, sdk.WrapError(err, "Unable to delete node %d job runs ", nr.ID)
 		}
 
@@ -322,7 +322,7 @@ func executeNodeRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store,
 			and workflow_node_run.status = $3
 			order by workflow_node_run.start asc
 			limit 1`
-			waitingRunID, errID := db.SelectInt(mutexQuery, updatedWorkflowRun.WorkflowID, nodeName, string(sdk.StatusWaiting))
+			waitingRunID, errID := p.db.SelectInt(mutexQuery, updatedWorkflowRun.WorkflowID, nodeName, string(sdk.StatusWaiting))
 			if errID != nil && errID != sql.ErrNoRows {
 				log.Error(ctx, "workflow.execute> Unable to load mutex-locked workflow node run ID: %v", errID)
 				return report, nil
@@ -331,7 +331,7 @@ func executeNodeRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store,
 			if waitingRunID == 0 {
 				return report, nil
 			}
-			waitingRun, errRun := LoadNodeRunByID(db, waitingRunID, LoadRunOptions{})
+			waitingRun, errRun := LoadNodeRunByID(p.db, waitingRunID, LoadRunOptions{})
 			if errRun != nil && sdk.Cause(errRun) != sql.ErrNoRows {
 				log.Error(ctx, "workflow.execute> Unable to load mutex-locked workflow rnode un: %v", errRun)
 				return report, nil
@@ -342,7 +342,7 @@ func executeNodeRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store,
 			}
 
 			//Here we are loading another workflow run
-			workflowRun, errWRun := LoadRunByID(db, waitingRun.WorkflowRunID, LoadRunOptions{})
+			workflowRun, errWRun := LoadRunByID(p.db, waitingRun.WorkflowRunID, LoadRunOptions{})
 			if errWRun != nil {
 				log.Error(ctx, "workflow.execute> Unable to load mutex-locked workflow rnode un: %v", errWRun)
 				return report, nil
@@ -353,12 +353,12 @@ func executeNodeRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store,
 				Type: sdk.MsgWorkflowNodeMutexRelease.Type,
 			})
 
-			if err := UpdateWorkflowRun(ctx, db, workflowRun); err != nil {
+			if err := UpdateWorkflowRun(ctx, p.db, workflowRun); err != nil {
 				return nil, sdk.WrapError(err, "Unable to update workflow run %d after mutex release", workflowRun.ID)
 			}
 
 			log.Debug("workflow.execute> process the node run %d because mutex has been released", waitingRun.ID)
-			r, err := executeNodeRun(ctx, db, store, proj, waitingRun)
+			r, err := p.executeNodeRun(ctx, waitingRun)
 			report, err = report.Merge(ctx, r, err)
 			if err != nil {
 				return nil, sdk.WrapError(err, "Unable to reprocess workflow")
@@ -399,7 +399,7 @@ func checkRunOnlyFailedJobs(wr *sdk.WorkflowRun, nr *sdk.WorkflowNodeRun) (*sdk.
 	return previousNR, nil
 }
 
-func addJobsToQueue(ctx context.Context, db gorp.SqlExecutor, stage *sdk.Stage, wr *sdk.WorkflowRun, nr *sdk.WorkflowNodeRun, previousStage *sdk.Stage) (*ProcessorReport, error) {
+func (p processor) addJobsToQueue(ctx context.Context, stage *sdk.Stage, wr *sdk.WorkflowRun, nr *sdk.WorkflowNodeRun, previousStage *sdk.Stage) (*ProcessorReport, error) {
 	var end func()
 	ctx, end = observability.Span(ctx, "workflow.addJobsToQueue")
 	defer end()
@@ -417,7 +417,7 @@ func addJobsToQueue(ctx context.Context, db gorp.SqlExecutor, stage *sdk.Stage, 
 	}
 
 	_, next = observability.Span(ctx, "workflow.getIntegrationPluginBinaries")
-	integrationPluginBinaries, err := getIntegrationPluginBinaries(db, wr, nr)
+	integrationPluginBinaries, err := getIntegrationPluginBinaries(p.db, wr, nr)
 	if err != nil {
 		return report, sdk.WrapError(err, "unable to get integration plugins requirement")
 	}
@@ -451,21 +451,21 @@ jobLoop:
 
 		//Process variables for the jobs
 		_, next = observability.Span(ctx, "workflow..getNodeJobRunParameters")
-		jobParams, err := getNodeJobRunParameters(db, *job, nr, stage)
+		jobParams, err := p.getNodeJobRunParameters(*job, nr, stage)
 		next()
 		if err != nil {
 			spawnErrs.Join(*err)
 		}
 
 		_, next = observability.Span(ctx, "workflow.processNodeJobRunRequirements")
-		jobRequirements, containsService, wm, err := processNodeJobRunRequirements(ctx, db, *job, nr, sdk.Groups(groups).ToIDs(), integrationPluginBinaries)
+		jobRequirements, containsService, wm, err := p.processNodeJobRunRequirements(ctx, *job, nr, sdk.Groups(groups).ToIDs(), integrationPluginBinaries)
 		next()
 		if err != nil {
 			spawnErrs.Join(*err)
 		}
 
 		// check that children actions used by job can be used by the project
-		if err := action.CheckChildrenForGroupIDsWithLoop(ctx, db, &job.Action, sdk.Groups(groups).ToIDs()); err != nil {
+		if err := action.CheckChildrenForGroupIDsWithLoop(ctx, p.db, &job.Action, sdk.Groups(groups).ToIDs()); err != nil {
 			spawnErrs.Append(err)
 		}
 
@@ -529,13 +529,13 @@ jobLoop:
 
 		// insert in database
 		_, next = observability.Span(ctx, "workflow.insertWorkflowNodeJobRun")
-		if err := insertWorkflowNodeJobRun(db, &wjob); err != nil {
+		if err := insertWorkflowNodeJobRun(p.db, &wjob); err != nil {
 			next()
 			return report, sdk.WrapError(err, "unable to insert in table workflow_node_run_job")
 		}
 		next()
 
-		if err := AddSpawnInfosNodeJobRun(db, wjob.ID, PrepareSpawnInfos(wjob.SpawnInfos)); err != nil {
+		if err := AddSpawnInfosNodeJobRun(p.db, wjob.ID, PrepareSpawnInfos(wjob.SpawnInfos)); err != nil {
 			return nil, sdk.WrapError(err, "cannot save spawn info job %d", wjob.ID)
 		}
 
@@ -600,7 +600,7 @@ func getExecutablesGroups(wr *sdk.WorkflowRun, nr *sdk.WorkflowNodeRun) ([]sdk.G
 	return groups, nil
 }
 
-func syncStage(ctx context.Context, db gorp.SqlExecutor, store cache.Store, stage *sdk.Stage) (bool, error) {
+func (p processor) syncStage(ctx context.Context, stage *sdk.Stage) (bool, error) {
 	stageEnd := true
 	finalStatus := sdk.StatusBuilding
 
@@ -1001,7 +1001,7 @@ func (i vcsInfos) String() string {
 	return fmt.Sprintf("%s:%s:%s:%s", i.Server, i.Repository, i.Branch, i.Hash)
 }
 
-func getVCSInfos(ctx context.Context, db gorp.SqlExecutor, store cache.Store, projectKey string, vcsServer *sdk.ProjectVCSServer, gitValues map[string]string, applicationName, applicationVCSServer, applicationRepositoryFullname string) (*vcsInfos, error) {
+func getVCSInfos(ctx context.Context, db gorp.SqlExecutor, store cache.Store, client sdk.VCSAuthorizedClient, vcsServer *sdk.ProjectVCSServer, gitValues map[string]string, applicationName, applicationVCSServer, applicationRepositoryFullname string) (*vcsInfos, error) {
 	var vcsInfos vcsInfos
 	vcsInfos.Repository = gitValues[tagGitRepository]
 	vcsInfos.Branch = gitValues[tagGitBranch]
@@ -1011,10 +1011,7 @@ func getVCSInfos(ctx context.Context, db gorp.SqlExecutor, store cache.Store, pr
 	vcsInfos.Message = gitValues[tagGitMessage]
 	vcsInfos.URL = gitValues[tagGitURL]
 	vcsInfos.HTTPUrl = gitValues[tagGitHTTPURL]
-
-	if vcsServer != nil {
-		vcsInfos.Server = vcsServer.Name
-	}
+	vcsInfos.Server = vcsServer.Name
 
 	if applicationName == "" || applicationVCSServer == "" || vcsServer == nil {
 		return &vcsInfos, nil
@@ -1037,12 +1034,6 @@ func getVCSInfos(ctx context.Context, db gorp.SqlExecutor, store cache.Store, pr
 	if find {
 		log.Debug("completeVCSInfos> load from cache: %s", cacheKey)
 		return &vcsInfos, nil
-	}
-
-	//Get the RepositoriesManager Client
-	client, errclient := repositoriesmanager.AuthorizedClient(ctx, db, store, projectKey, vcsServer)
-	if errclient != nil {
-		return nil, sdk.WrapError(errclient, "cannot get client")
 	}
 
 	// Check repository value

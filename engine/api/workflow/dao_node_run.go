@@ -10,10 +10,8 @@ import (
 	"github.com/go-gorp/gorp"
 	"github.com/ovh/venom"
 
-	"github.com/ovh/cds/engine/api/cache"
 	"github.com/ovh/cds/engine/api/database/gorpmapping"
 	"github.com/ovh/cds/engine/api/observability"
-	"github.com/ovh/cds/engine/api/repositoriesmanager"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/log"
 )
@@ -239,8 +237,8 @@ func insertWorkflowNodeRun(db gorp.SqlExecutor, n *sdk.WorkflowNodeRun) error {
 	return nil
 }
 
-func nodeRunExist(db gorp.SqlExecutor, workflowRunID, nodeID, num int64, subnumber int) (bool, error) {
-	nb, err := db.SelectInt("SELECT COUNT(1) FROM workflow_node_run WHERE workflow_run_id = $4 AND workflow_node_id = $1 AND num = $2 AND sub_num = $3", nodeID, num, subnumber, workflowRunID)
+func (p processor) nodeRunExist(workflowRunID, nodeID, num int64, subnumber int) (bool, error) {
+	nb, err := p.db.SelectInt("SELECT COUNT(1) FROM workflow_node_run WHERE workflow_run_id = $4 AND workflow_node_id = $1 AND num = $2 AND sub_num = $3", nodeID, num, subnumber, workflowRunID)
 	return nb > 0, err
 }
 
@@ -536,7 +534,7 @@ func UpdateNodeRun(db gorp.SqlExecutor, n *sdk.WorkflowNodeRun) error {
 }
 
 // GetNodeRunBuildCommits gets commits for given node run and return current vcs info
-func GetNodeRunBuildCommits(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project, wf *sdk.Workflow, wNodeName string, number int64, nodeRun *sdk.WorkflowNodeRun, app *sdk.Application, env *sdk.Environment) ([]sdk.VCSCommit, sdk.BuildNumberAndHash, error) {
+func GetNodeRunBuildCommits(ctx context.Context, db gorp.SqlExecutor, proj sdk.Project, client sdk.VCSAuthorizedClient, wf *sdk.Workflow, wNodeName string, number int64, nodeRun *sdk.WorkflowNodeRun, app *sdk.Application, env *sdk.Environment) ([]sdk.VCSCommit, sdk.BuildNumberAndHash, error) {
 	var cur sdk.BuildNumberAndHash
 	if app == nil {
 		log.Debug("GetNodeRunBuildCommits> No app linked")
@@ -549,18 +547,7 @@ func GetNodeRunBuildCommits(ctx context.Context, db gorp.SqlExecutor, store cach
 	}
 	cur.BuildNumber = number
 
-	vcsServer := repositoriesmanager.GetProjectVCSServer(proj, app.VCSServer)
-	if vcsServer == nil {
-		log.Debug("GetNodeRunBuildCommits> No vcsServer found")
-		return nil, cur, nil
-	}
-
 	res := []sdk.VCSCommit{}
-	//Get the RepositoriesManager Client
-	client, err := repositoriesmanager.AuthorizedClient(ctx, db, store, proj.Key, vcsServer)
-	if err != nil {
-		return nil, cur, sdk.WrapError(err, "cannot get client")
-	}
 	cur.Remote = nodeRun.VCSRepository
 	cur.Branch = nodeRun.VCSBranch
 	cur.Hash = nodeRun.VCSHash
@@ -775,27 +762,27 @@ func PreviousNodeRunVCSInfos(ctx context.Context, db gorp.SqlExecutor, projectKe
 	return previous, nil
 }
 
-func updateNodeRunCommits(db gorp.SqlExecutor, id int64, commits []sdk.VCSCommit) error {
+func (p processor) updateNodeRunCommits(id int64, commits []sdk.VCSCommit) error {
 	log.Debug("updateNodeRunCommits> Updating %d commits for workflow_node_run #%d", len(commits), id)
 	commitsBtes, errMarshal := json.Marshal(commits)
 	if errMarshal != nil {
 		return sdk.WrapError(errMarshal, "updateNodeRunCommits> Unable to marshal commits")
 	}
 
-	if _, err := db.Exec("UPDATE workflow_node_run SET commits = $1 where id = $2", commitsBtes, id); err != nil {
+	if _, err := p.db.Exec("UPDATE workflow_node_run SET commits = $1 where id = $2", commitsBtes, id); err != nil {
 		return sdk.WrapError(err, "Unable to update workflow_node_run id=%d", id)
 	}
 	return nil
 }
 
 // updateNodeRunStatusAndStage update just noderun status and stage
-func updateNodeRunStatusAndStage(db gorp.SqlExecutor, nodeRun *sdk.WorkflowNodeRun) error {
+func (p processor) updateNodeRunStatusAndStage(nodeRun *sdk.WorkflowNodeRun) error {
 	stagesBts, errMarshal := json.Marshal(nodeRun.Stages)
 	if errMarshal != nil {
 		return sdk.WrapError(errMarshal, "unable to marshal stages")
 	}
 
-	if _, err := db.Exec("UPDATE workflow_node_run SET status = $1, stages = $2, done = $3 where id = $4", nodeRun.Status, stagesBts, nodeRun.Done, nodeRun.ID); err != nil {
+	if _, err := p.db.Exec("UPDATE workflow_node_run SET status = $1, stages = $2, done = $3 where id = $4", nodeRun.Status, stagesBts, nodeRun.Done, nodeRun.ID); err != nil {
 		return sdk.WrapError(err, "unable to update workflow_node_run %s", nodeRun.WorkflowNodeName)
 	}
 	return nil

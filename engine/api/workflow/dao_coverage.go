@@ -7,10 +7,8 @@ import (
 	"github.com/go-gorp/gorp"
 	"github.com/sguiheux/go-coverage"
 
-	"github.com/ovh/cds/engine/api/cache"
 	"github.com/ovh/cds/engine/api/database/gorpmapping"
 	"github.com/ovh/cds/engine/api/metrics"
-	"github.com/ovh/cds/engine/api/repositoriesmanager"
 	"github.com/ovh/cds/sdk"
 )
 
@@ -130,8 +128,7 @@ func (c *Coverage) PostUpdate(s gorp.SqlExecutor) error {
 	return nil
 }
 
-// ComputeNewReport compute trends and import new coverage report
-func ComputeNewReport(ctx context.Context, db gorp.SqlExecutor, cache cache.Store, report coverage.Report, wnr *sdk.WorkflowNodeRun, proj sdk.Project) error {
+func computeNewReport(db gorp.SqlExecutor, report coverage.Report, wnr *sdk.WorkflowNodeRun) (sdk.WorkflowNodeRunCoverage, error) {
 	covReport := sdk.WorkflowNodeRunCoverage{
 		WorkflowID:        wnr.WorkflowID,
 		WorkflowRunID:     wnr.WorkflowRunID,
@@ -147,55 +144,44 @@ func ComputeNewReport(ctx context.Context, db gorp.SqlExecutor, cache cache.Stor
 	// Get previous report
 	previousReport, err := loadPreviousCoverageReport(db, wnr.WorkflowID, wnr.Number, wnr.VCSRepository, wnr.VCSBranch, covReport.ApplicationID)
 	if err != nil && !sdk.ErrorIs(err, sdk.ErrNotFound) {
-		return sdk.WrapError(err, "unable to load previous report")
+		return sdk.WorkflowNodeRunCoverage{}, sdk.WrapError(err, "unable to load previous report")
 	}
 	if !sdk.ErrorIs(err, sdk.ErrNotFound) {
 		// remove data we don't need
 		previousReport.Report.Files = nil
 		covReport.Trend.CurrentBranch = previousReport.Report
 	}
+	return covReport, nil
+}
 
-	if err := ComputeLatestDefaultBranchReport(ctx, db, cache, proj, wnr, &covReport); err != nil {
-		return sdk.WrapError(err, "Unable to get default branch coverage report")
+func ComputeNewReportOnDefaultBranch(db gorp.SqlExecutor, projKey string, report coverage.Report, wnr *sdk.WorkflowNodeRun) error {
+	covReport, err := computeNewReport(db, report, wnr)
+	if err != nil {
+		return err
 	}
-
 	if err := InsertCoverage(db, covReport); err != nil {
 		return sdk.WrapError(err, "Unable to insert coverage report")
 	}
-
+	metrics.PushCoverage(projKey, covReport.ApplicationID, covReport.WorkflowID, covReport.Num, covReport.Report)
 	return nil
 }
 
-// ComputeLatestDefaultBranchReport add the default branch coverage report into  the given report
-func ComputeLatestDefaultBranchReport(ctx context.Context, db gorp.SqlExecutor, cache cache.Store, proj sdk.Project, wnr *sdk.WorkflowNodeRun, covReport *sdk.WorkflowNodeRunCoverage) error {
-	// Get report latest report on previous branch
-	var defaultBranch string
-	projectVCSServer := repositoriesmanager.GetProjectVCSServer(proj, wnr.VCSServer)
-	client, erra := repositoriesmanager.AuthorizedClient(ctx, db, cache, proj.Key, projectVCSServer)
-	if erra != nil {
-		return sdk.WrapError(sdk.ErrNoReposManagerClientAuth, "ComputeLatestDefaultBranchReport> Cannot get repo client %s : %s", wnr.VCSServer, erra)
+// ComputeNewReport compute trends and import new coverage report
+func ComputeNewReport(ctx context.Context, db gorp.SqlExecutor, report coverage.Report, wnr *sdk.WorkflowNodeRun, repository string, defaultBranch string) error {
+	covReport, err := computeNewReport(db, report, wnr)
+	if err != nil {
+		return err
 	}
 
-	branches, errB := client.Branches(ctx, wnr.VCSRepository)
-	if errB != nil {
-		return sdk.WrapError(errB, "ComputeLatestDefaultBranchReport> Cannot list branches for %s/%s", wnr.VCSServer, wnr.VCSRepository)
+	defaultCoverage, errD := loadLatestCoverageReport(db, covReport.WorkflowID, repository, defaultBranch, covReport.ApplicationID)
+	if errD != nil && !sdk.ErrorIs(errD, sdk.ErrNotFound) {
+		return sdk.WrapError(errD, "ComputeLatestDefaultBranchReport> Cannot get latest report on default branch")
 	}
-	for _, b := range branches {
-		if b.Default {
-			defaultBranch = b.DisplayID
-			break
-		}
-	}
+	defaultCoverage.Report.Files = nil
+	covReport.Trend.DefaultBranch = defaultCoverage.Report
 
-	if defaultBranch != wnr.VCSBranch {
-		defaultCoverage, errD := loadLatestCoverageReport(db, wnr.WorkflowID, wnr.VCSRepository, defaultBranch, covReport.ApplicationID)
-		if errD != nil && !sdk.ErrorIs(errD, sdk.ErrNotFound) {
-			return sdk.WrapError(errD, "ComputeLatestDefaultBranchReport> Cannot get latest report on default branch")
-		}
-		defaultCoverage.Report.Files = nil
-		covReport.Trend.DefaultBranch = defaultCoverage.Report
-	} else {
-		metrics.PushCoverage(proj.Key, wnr.ApplicationID, wnr.WorkflowID, wnr.Number, covReport.Report)
+	if err := InsertCoverage(db, covReport); err != nil {
+		return sdk.WrapError(err, "Unable to insert coverage report")
 	}
 
 	return nil

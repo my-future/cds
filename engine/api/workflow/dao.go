@@ -14,7 +14,6 @@ import (
 	"github.com/go-gorp/gorp"
 
 	"github.com/ovh/cds/engine/api/application"
-	"github.com/ovh/cds/engine/api/ascode"
 	"github.com/ovh/cds/engine/api/cache"
 	"github.com/ovh/cds/engine/api/database/gorpmapping"
 	"github.com/ovh/cds/engine/api/environment"
@@ -67,13 +66,12 @@ func GetAllByIDs(db gorp.SqlExecutor, ids []int64) (sdk.Workflows, error) {
 
 // LoadOptions custom option for loading workflow
 type LoadOptions struct {
-	Minimal               bool
-	DeepPipeline          bool
-	Base64Keys            bool
-	WithLabels            bool
-	WithIcon              bool
-	WithAsCodeUpdateEvent bool
-	WithIntegrations      bool
+	Minimal          bool
+	DeepPipeline     bool
+	Base64Keys       bool
+	WithLabels       bool
+	WithIcon         bool
+	WithIntegrations bool
 }
 
 // UpdateOptions is option to parse a workflow
@@ -357,7 +355,7 @@ func Load(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.
 	res.ProjectKey = proj.Key
 
 	if !opts.Minimal {
-		if err := IsValid(ctx, store, db, res, proj, opts); err != nil {
+		if err := IsValid(ctx, db, res, proj, opts); err != nil {
 			return nil, sdk.WrapError(err, "Unable to valid workflow")
 		}
 	}
@@ -366,7 +364,7 @@ func Load(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.
 }
 
 // LoadByID loads a workflow for a given user (ie. checking permissions)
-func LoadByID(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project, id int64, opts LoadOptions) (*sdk.Workflow, error) {
+func LoadByID(ctx context.Context, db gorp.SqlExecutor, proj sdk.Project, id int64, opts LoadOptions) (*sdk.Workflow, error) {
 	query := `
 		select *
 		from workflow
@@ -376,7 +374,7 @@ func LoadByID(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj 
 		return nil, sdk.WrapError(err, "Unable to load workflow %d", id)
 	}
 
-	if err := IsValid(context.TODO(), store, db, res, proj, opts); err != nil {
+	if err := IsValid(context.TODO(), db, res, proj, opts); err != nil {
 		return nil, sdk.WrapError(err, "Unable to valid workflow")
 	}
 	return res, nil
@@ -552,22 +550,6 @@ func load(ctx context.Context, db gorp.SqlExecutor, proj sdk.Project, opts LoadO
 		res.Labels = labels
 	}
 
-	if opts.WithAsCodeUpdateEvent {
-		var asCodeEvents []sdk.AsCodeEvent
-		var errAS error
-		_, next = observability.Span(ctx, "workflow.load.AddCodeUpdateEvents")
-		if res.FromRepository != "" {
-			asCodeEvents, errAS = ascode.LoadAsCodeEventByRepo(ctx, db, res.FromRepository)
-		} else {
-			asCodeEvents, errAS = ascode.LoadAsCodeEventByWorkflowID(ctx, db, res.ID)
-		}
-		next()
-		if errAS != nil {
-			return nil, sdk.WrapError(errAS, "Load> unable to load as code update events")
-		}
-		res.AsCodeEvent = asCodeEvents
-	}
-
 	if opts.WithIntegrations {
 		_, next = observability.Span(ctx, "workflow.load.AddIntegrations")
 		integrations, errInt := integration.LoadIntegrationsByWorkflowID(db, res.ID, false)
@@ -604,14 +586,14 @@ func IsFavorite(db gorp.SqlExecutor, w *sdk.Workflow, uID string) (bool, error) 
 }
 
 // Insert inserts a new workflow
-func Insert(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project, w *sdk.Workflow) error {
-	if err := IsValid(ctx, store, db, w, proj, LoadOptions{}); err != nil {
+func Insert(ctx context.Context, db gorp.SqlExecutor, proj sdk.Project, client sdk.VCSAuthorizedClient, w *sdk.Workflow) error {
+	if err := IsValid(ctx, db, w, proj, LoadOptions{}); err != nil {
 		return sdk.WrapError(err, "Unable to validate workflow")
 	}
 
 	if w.WorkflowData.Node.Context != nil && w.WorkflowData.Node.Context.ApplicationID != 0 {
 		var err error
-		if w.WorkflowData.Node.Context.DefaultPayload, err = DefaultPayload(ctx, db, store, proj, w); err != nil {
+		if w.WorkflowData.Node.Context.DefaultPayload, err = DefaultPayload(ctx, db, client, w); err != nil {
 			log.Warning(ctx, "postWorkflowHandler> Cannot set default payload : %v", err)
 		}
 	}
@@ -675,7 +657,7 @@ func Insert(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sd
 
 	// Manage new hooks
 	if len(w.WorkflowData.Node.Hooks) > 0 {
-		if err := hookRegistration(ctx, db, store, proj, w, nil); err != nil {
+		if err := hookRegistration(ctx, db, client, w, nil); err != nil {
 			return err
 		}
 	}
@@ -900,10 +882,10 @@ func RenameNode(ctx context.Context, db gorp.SqlExecutor, w *sdk.Workflow) error
 }
 
 // Update updates a workflow
-func Update(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project, wf *sdk.Workflow, uptOption UpdateOptions) error {
+func Update(ctx context.Context, db gorp.SqlExecutor, proj sdk.Project, client sdk.VCSAuthorizedClient, wf *sdk.Workflow, uptOption UpdateOptions) error {
 	ctx, end := observability.Span(ctx, "workflow.Update")
 	defer end()
-	if err := IsValid(ctx, store, db, wf, proj, LoadOptions{}); err != nil {
+	if err := IsValid(ctx, db, wf, proj, LoadOptions{}); err != nil {
 		return err
 	}
 
@@ -916,7 +898,7 @@ func Update(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sd
 	}
 
 	// reload workflow to delete the current workflow data
-	oldWf, err := LoadByID(ctx, db, store, proj, wf.ID, LoadOptions{})
+	oldWf, err := LoadByID(ctx, db, proj, wf.ID, LoadOptions{})
 	if err != nil {
 		return sdk.WrapError(err, "Unable to load existing workflow with proj:%s ID:%d", proj.Key, wf.ID)
 	}
@@ -936,18 +918,18 @@ func Update(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sd
 	wf.PurgeTags = filteredPurgeTags
 	if wf.WorkflowData.Node.Context != nil && wf.WorkflowData.Node.Context.ApplicationID != 0 {
 		var err error
-		if wf.WorkflowData.Node.Context.DefaultPayload, err = DefaultPayload(ctx, db, store, proj, wf); err != nil {
+		if wf.WorkflowData.Node.Context.DefaultPayload, err = DefaultPayload(ctx, db, client, wf); err != nil {
 			log.Warning(ctx, "workflow.Update> Cannot set default payload : %v", err)
 		}
 	}
 
 	if !uptOption.DisableHookManagement {
-		if err := hookRegistration(ctx, db, store, proj, wf, oldWf); err != nil {
+		if err := hookRegistration(ctx, db, client, wf, oldWf); err != nil {
 			return err
 		}
 		if oldWf != nil {
 			hookToDelete := computeHookToDelete(wf, oldWf)
-			if err := hookUnregistration(ctx, db, store, proj, hookToDelete); err != nil {
+			if err := hookUnregistration(ctx, db, client, hookToDelete); err != nil {
 				return err
 			}
 		}
@@ -991,9 +973,9 @@ func MarkAsDelete(db gorp.SqlExecutor, key, name string) error {
 }
 
 // Delete workflow
-func Delete(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project, w *sdk.Workflow) error {
+func Delete(ctx context.Context, db gorp.SqlExecutor, client sdk.VCSAuthorizedClient, w *sdk.Workflow) error {
 	// Delete all hooks
-	if err := hookUnregistration(ctx, db, store, proj, w.WorkflowData.GetHooksMapRef()); err != nil {
+	if err := hookUnregistration(ctx, db, client, w.WorkflowData.GetHooksMapRef()); err != nil {
 		return sdk.WrapError(err, "unable to delete hooks from workflow")
 	}
 
@@ -1019,7 +1001,7 @@ func Delete(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sd
 }
 
 // IsValid cheks workflow validity
-func IsValid(ctx context.Context, store cache.Store, db gorp.SqlExecutor, w *sdk.Workflow, proj sdk.Project, opts LoadOptions) error {
+func IsValid(ctx context.Context, db gorp.SqlExecutor, w *sdk.Workflow, proj sdk.Project, opts LoadOptions) error {
 	//Check project is not empty
 	if w.ProjectKey == "" {
 		return sdk.NewError(sdk.ErrWorkflowInvalid, fmt.Errorf("Invalid project key"))
@@ -1094,7 +1076,7 @@ func IsValid(ctx context.Context, store cache.Store, db gorp.SqlExecutor, w *sdk
 		if err := checkPipeline(ctx, db, proj, w, n, opts); err != nil {
 			return err
 		}
-		if err := checkApplication(store, db, proj, w, n); err != nil {
+		if err := checkApplication(db, proj, w, n); err != nil {
 			return err
 		}
 		if err := checkEnvironment(db, proj, w, n); err != nil {
@@ -1294,11 +1276,11 @@ func checkEnvironment(db gorp.SqlExecutor, proj sdk.Project, w *sdk.Workflow, n 
 }
 
 // CheckApplication checks application data
-func checkApplication(store cache.Store, db gorp.SqlExecutor, proj sdk.Project, w *sdk.Workflow, n *sdk.Node) error {
+func checkApplication(db gorp.SqlExecutor, proj sdk.Project, w *sdk.Workflow, n *sdk.Node) error {
 	if n.Context.ApplicationID != 0 {
 		app, ok := w.Applications[n.Context.ApplicationID]
 		if !ok {
-			appDB, errA := application.LoadByID(db, store, n.Context.ApplicationID, application.LoadOptions.WithDeploymentStrategies, application.LoadOptions.WithVariables)
+			appDB, errA := application.LoadByID(db, n.Context.ApplicationID, application.LoadOptions.WithDeploymentStrategies, application.LoadOptions.WithVariables)
 			if errA != nil {
 				return errA
 			}
@@ -1313,7 +1295,7 @@ func checkApplication(store cache.Store, db gorp.SqlExecutor, proj sdk.Project, 
 		return nil
 	}
 	if n.Context.ApplicationName != "" {
-		appDB, err := application.LoadByName(db, store, proj.Key, n.Context.ApplicationName, application.LoadOptions.WithDeploymentStrategies, application.LoadOptions.WithVariables)
+		appDB, err := application.LoadByName(db, proj.Key, n.Context.ApplicationName, application.LoadOptions.WithDeploymentStrategies, application.LoadOptions.WithVariables)
 		if err != nil {
 			if sdk.ErrorIs(err, sdk.ErrApplicationNotFound) {
 				return sdk.WithStack(sdk.ErrorWithData(sdk.ErrApplicationNotFound, n.Context.ApplicationName))
@@ -1482,7 +1464,7 @@ func Push(ctx context.Context, db *gorp.DbMap, store cache.Store, proj *sdk.Proj
 
 	if wf.WorkflowData.Node.Context.ApplicationID != 0 {
 		app := wf.Applications[wf.WorkflowData.Node.Context.ApplicationID]
-		if err := application.Update(tx, store, &app); err != nil {
+		if err := application.Update(tx, &app); err != nil {
 			return nil, nil, nil, sdk.WrapError(err, "Unable to update application vcs datas")
 		}
 		wf.Applications[wf.WorkflowData.Node.Context.ApplicationID] = app

@@ -27,6 +27,7 @@ func TestInsertProject(t *testing.T) {
 		Key:  "key",
 	}
 	assert.NoError(t, project.Insert(db, cache, &proj))
+
 }
 
 func TestInsertProject_withWrongKey(t *testing.T) {
@@ -38,18 +39,6 @@ func TestInsertProject_withWrongKey(t *testing.T) {
 	}
 
 	assert.Error(t, project.Insert(db, cache, &proj))
-}
-
-func TestDelete(t *testing.T) {
-	//covered by TestLoadAll
-}
-
-func TestDeleteByID(t *testing.T) {
-	//covered by TestLoadAll
-}
-
-func TestExist(t *testing.T) {
-	//covered by TestLoadAll
 }
 
 func TestLoadAllByRepo(t *testing.T) {
@@ -157,10 +146,6 @@ func TestLoadAll(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, len(groupProjects) == 1, "This should return only one project")
 	assert.Equal(t, proj1.Name, groupProjects[0].Name)
-
-	ok, err := project.Exist(db, "test_TestLoadAll1")
-	require.NoError(t, err)
-	assert.True(t, ok)
 
 	assert.NoError(t, project.Delete(db, cache, "test_TestLoadAll1"))
 	assert.NoError(t, project.Delete(db, cache, "test_TestLoadAll2"))

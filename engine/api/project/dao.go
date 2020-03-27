@@ -12,18 +12,29 @@ import (
 	"github.com/ovh/cds/engine/api/environment"
 	"github.com/ovh/cds/engine/api/group"
 	"github.com/ovh/cds/engine/api/keys"
-	"github.com/ovh/cds/engine/api/observability"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/log"
 )
 
-func loadAllByRepo(ctx context.Context, db gorp.SqlExecutor, store cache.Store, query string, args []interface{}, opts ...LoadOptionFunc) (sdk.Projects, error) {
-	return loadprojects(ctx, db, store, opts, query, args...)
+type dbProject struct {
+	gorpmapping.SignedEntity
+	sdk.Project
+}
+
+func (e dbProject) Canonical() gorpmapping.CanonicalForms {
+	var _ = []interface{}{e.ID, e.Key}
+	return gorpmapping.CanonicalForms{
+		"{{print .ID}}{{.Key}}",
+	}
+}
+
+func loadAllByRepo(ctx context.Context, db gorp.SqlExecutor, store cache.Store, query gorpmapping.Query, opts ...LoadOptionFunc) (sdk.Projects, error) {
+	return loadprojects(ctx, db, store, opts, query)
 }
 
 // LoadAllByRepoAndGroupIDs returns all projects with an application linked to the repo against the groups
 func LoadAllByRepoAndGroupIDs(ctx context.Context, db gorp.SqlExecutor, store cache.Store, groupIDs []int64, repo string, opts ...LoadOptionFunc) (sdk.Projects, error) {
-	query := `SELECT DISTINCT project.*
+	queryStr := `SELECT DISTINCT project.*
 		FROM  project
 		JOIN  application on project.id = application.project_id
 		WHERE application.repo_fullname = $3
@@ -35,24 +46,24 @@ func LoadAllByRepoAndGroupIDs(ctx context.Context, db gorp.SqlExecutor, store ca
 				OR
 				$2 = ANY(string_to_array($1, ',')::int[])
 		)`
-	args := []interface{}{gorpmapping.IDsToQueryString(groupIDs), group.SharedInfraGroup.ID, repo}
-	return loadAllByRepo(ctx, db, store, query, args, opts...)
+	query := gorpmapping.NewQuery(queryStr).Args(gorpmapping.IDsToQueryString(groupIDs), group.SharedInfraGroup.ID, repo)
+	return loadAllByRepo(ctx, db, store, query, opts...)
 }
 
 // LoadAllByRepo returns all projects with an application linked to the repo
 func LoadAllByRepo(ctx context.Context, db gorp.SqlExecutor, store cache.Store, repo string, opts ...LoadOptionFunc) (sdk.Projects, error) {
-	query := `SELECT DISTINCT project.*
+	queryStr := `SELECT DISTINCT project.*
 	FROM  project
 	JOIN  application on project.id = application.project_id
 	WHERE application.repo_fullname = $1
 	ORDER by project.name, project.projectkey ASC`
-	args := []interface{}{repo}
-	return loadAllByRepo(ctx, db, store, query, args, opts...)
+	query := gorpmapping.NewQuery(queryStr).Args(repo)
+	return loadAllByRepo(ctx, db, store, query, opts...)
 }
 
 // LoadAllByGroupIDs returns all projects given groups
 func LoadAllByGroupIDs(ctx context.Context, db gorp.SqlExecutor, store cache.Store, IDs []int64, opts ...LoadOptionFunc) (sdk.Projects, error) {
-	query := `SELECT project.*
+	queryStr := `SELECT project.*
 	FROM project
 	WHERE project.id IN (
 		SELECT project_group.project_id
@@ -63,63 +74,15 @@ func LoadAllByGroupIDs(ctx context.Context, db gorp.SqlExecutor, store cache.Sto
 			$2 = ANY(string_to_array($1, ',')::int[])
 	)
 	ORDER by project.name, project.projectkey ASC`
-	args := []interface{}{gorpmapping.IDsToQueryString(IDs), group.SharedInfraGroup.ID}
-	return loadprojects(ctx, db, store, opts, query, args...)
+	query := gorpmapping.NewQuery(queryStr).Args(gorpmapping.IDsToQueryString(IDs), group.SharedInfraGroup.ID)
+	return loadprojects(ctx, db, store, opts, query)
 }
 
 // LoadAll returns all projects
 func LoadAll(ctx context.Context, db gorp.SqlExecutor, store cache.Store, opts ...LoadOptionFunc) (sdk.Projects, error) {
-	query := "select project.* from project ORDER by project.name, project.projectkey ASC"
+	queryStr := "select project.* from project ORDER by project.name, project.projectkey ASC"
+	query := gorpmapping.NewQuery(queryStr)
 	return loadprojects(ctx, db, store, opts, query)
-}
-
-// LoadPermissions loads all projects where group has access
-func LoadPermissions(db gorp.SqlExecutor, groupID int64) ([]sdk.ProjectGroup, error) {
-	res := []sdk.ProjectGroup{}
-	query := `
-		SELECT project.projectKey, project.name, project.last_modified, project_group.role
-		FROM project
-	 	JOIN project_group ON project_group.project_id = project.id
-	 	WHERE project_group.group_id = $1
-		ORDER BY project.name ASC`
-
-	rows, err := db.Query(query, groupID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var projectKey, projectName string
-		var perm int
-		var lastModified time.Time
-		if err := rows.Scan(&projectKey, &projectName, &lastModified, &perm); err != nil {
-			return nil, err
-		}
-		res = append(res, sdk.ProjectGroup{
-			Project: sdk.Project{
-				Key:          projectKey,
-				Name:         projectName,
-				LastModified: lastModified,
-			},
-			Permission: perm,
-		})
-	}
-	return res, nil
-}
-
-// Exist checks whether a project exists or not
-func Exist(db gorp.SqlExecutor, projectKey string) (bool, error) {
-	query := `SELECT COUNT(id) FROM project WHERE project.projectKey = $1`
-	var nb int64
-	err := db.QueryRow(query, projectKey).Scan(&nb)
-	if err != nil {
-		return false, err
-	}
-	if nb != 0 {
-		return true, nil
-	}
-	return false, nil
 }
 
 // Delete delete one or more projects given the key
@@ -142,11 +105,13 @@ func Insert(db gorp.SqlExecutor, store cache.Store, proj *sdk.Project) error {
 	}
 
 	proj.LastModified = time.Now()
-	dbProj := dbProject(*proj)
-	if err := db.Insert(&dbProj); err != nil {
+	dbProj := dbProject{Project: *proj}
+	if err := gorpmapping.InsertAndSign(context.Background(), db, &dbProj); err != nil {
 		return err
 	}
-	*proj = sdk.Project(dbProj)
+
+	*proj = dbProj.Project
+	proj.Blur() // Mask any sensitive data
 
 	k, err := keys.GeneratePGPKeyPair(BuiltinGPGKey)
 	if err != nil {
@@ -176,15 +141,17 @@ func Update(db gorp.SqlExecutor, store cache.Store, proj *sdk.Project) error {
 	}
 
 	proj.LastModified = time.Now()
-	dbProj := dbProject(*proj)
-	n, err := db.Update(&dbProj)
-	if err != nil {
+
+	dbProj := dbProject{Project: *proj}
+	copyOfVCSServer := proj.VCSServers
+	if err := gorpmapping.UpdateAndSign(context.Background(), db, &dbProj); err != nil {
 		return err
 	}
-	if n == 0 {
-		return sdk.WithStack(sdk.ErrNoProject)
-	}
-	*proj = sdk.Project(dbProj)
+
+	*proj = dbProj.Project
+	proj.VCSServers = copyOfVCSServer
+	proj.Blur() // Mask any sensitive data
+
 	return nil
 }
 
@@ -211,51 +178,48 @@ func DeleteByID(db gorp.SqlExecutor, id int64) error {
 
 // LoadProjectByNodeJobRunID return a project from node job run id
 func LoadProjectByNodeJobRunID(ctx context.Context, db gorp.SqlExecutor, store cache.Store, nodeJobRunID int64, opts ...LoadOptionFunc) (*sdk.Project, error) {
-	query := `
-		SELECT project.* FROM project
-		JOIN workflow_run ON workflow_run.project_id = project.id
-		JOIN workflow_node_run ON workflow_node_run.workflow_run_id = workflow_run.id
-		JOIN workflow_node_run_job ON workflow_node_run_job.workflow_node_run_id = workflow_node_run.id
-		WHERE workflow_node_run_job.id = $1
-	`
-	return load(ctx, db, store, opts, query, nodeJobRunID)
+	queryStr := `SELECT project.* 
+	FROM project
+	JOIN workflow_run ON workflow_run.project_id = project.id
+	JOIN workflow_node_run ON workflow_node_run.workflow_run_id = workflow_run.id
+	JOIN workflow_node_run_job ON workflow_node_run_job.workflow_node_run_id = workflow_node_run.id
+	WHERE workflow_node_run_job.id = $1`
+	query := gorpmapping.NewQuery(queryStr).Args(nodeJobRunID)
+	return load(ctx, db, store, opts, query)
 }
 
 // LoadByID returns a project with all its variables and applications given a user. It can also returns pipelines, environments, groups, permission, and repositorires manager. See LoadOptions
 func LoadByID(db gorp.SqlExecutor, store cache.Store, id int64, opts ...LoadOptionFunc) (*sdk.Project, error) {
-	return load(context.TODO(), db, store, opts, "select project.* from project where id = $1", id)
+	queryStr := "SELECT project.* FROM project WHERE id = $1"
+	query := gorpmapping.NewQuery(queryStr).Args(id)
+	return load(context.TODO(), db, store, opts, query)
 }
 
 // Load  returns a project with all its variables and applications given a user. It can also returns pipelines, environments, groups, permission, and repositorires manager. See LoadOptions
 func Load(db gorp.SqlExecutor, store cache.Store, key string, opts ...LoadOptionFunc) (*sdk.Project, error) {
-	return load(nil, db, store, opts, "select project.* from project where projectkey = $1", key)
+	queryStr := "SELECT project.* FROM project WHERE projectkey = $1"
+	query := gorpmapping.NewQuery(queryStr).Args(key)
+	return load(nil, db, store, opts, query)
 }
 
 // LoadProjectByWorkflowID loads a project from workflow iD
 func LoadProjectByWorkflowID(db gorp.SqlExecutor, store cache.Store, workflowID int64, opts ...LoadOptionFunc) (*sdk.Project, error) {
-	query := `SELECT project.id, project.name, project.projectKey, project.last_modified
-	          FROM project
-	          JOIN workflow ON workflow.project_id = project.id
-	          WHERE workflow.id = $1 `
-	return load(context.TODO(), db, store, opts, query, workflowID)
+	queryStr := `SELECT project.*
+	FROM project
+	JOIN workflow ON workflow.project_id = project.id
+	WHERE workflow.id = $1 `
+	query := gorpmapping.NewQuery(queryStr).Args(workflowID)
+	return load(context.TODO(), db, store, opts, query)
 }
 
-func loadprojects(ctx context.Context, db gorp.SqlExecutor, store cache.Store, opts []LoadOptionFunc, query string, args ...interface{}) ([]sdk.Project, error) {
+func loadprojects(ctx context.Context, db gorp.SqlExecutor, store cache.Store, opts []LoadOptionFunc, query gorpmapping.Query) ([]sdk.Project, error) {
 	var res []dbProject
-	if _, err := db.Select(&res, query, args...); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, sdk.WithStack(sdk.ErrNoProject)
-		}
-		return nil, sdk.WithStack(err)
+	if err := gorpmapping.GetAll(ctx, db, query, &res, gorpmapping.GetOptions.WithDecryption); err != nil {
+		return nil, err
 	}
-
 	projs := make([]sdk.Project, 0, len(res))
 	for i := range res {
 		p := &res[i]
-		if err := p.PostGet(db); err != nil {
-			log.Error(ctx, "loadprojects> PostGet error (ID=%d, Key:%s): %v", p.ID, p.Key, err)
-			continue
-		}
 		proj, err := unwrap(db, store, p, opts)
 		if err != nil {
 			log.Error(ctx, "loadprojects> unwrap error (ID=%d, Key:%s): %v", p.ID, p.Key, err)
@@ -267,26 +231,37 @@ func loadprojects(ctx context.Context, db gorp.SqlExecutor, store cache.Store, o
 	return projs, nil
 }
 
-func load(ctx context.Context, db gorp.SqlExecutor, store cache.Store, opts []LoadOptionFunc, query string, args ...interface{}) (*sdk.Project, error) {
-	var end func()
-	_, end = observability.Span(ctx, "project.load")
-	defer end()
-
-	dbProj := &dbProject{}
-
-	if err := db.SelectOne(dbProj, query, args...); err != nil {
-		if err == sql.ErrNoRows {
-			return nil, sdk.WithStack(sdk.ErrNoProject)
-		}
+func unsafeLoad(ctx context.Context, db gorp.SqlExecutor, query gorpmapping.Query) (*dbProject, error) {
+	var dbProj dbProject
+	found, err := gorpmapping.Get(ctx, db, query, &dbProj, gorpmapping.GetOptions.WithDecryption)
+	if err != nil {
 		return nil, sdk.WithStack(err)
 	}
+	if !found {
+		return nil, sdk.WithStack(sdk.ErrNotFound)
+	}
+	return &dbProj, nil
+}
 
+func load(ctx context.Context, db gorp.SqlExecutor, store cache.Store, opts []LoadOptionFunc, query gorpmapping.Query) (*sdk.Project, error) {
+	dbProj, err := unsafeLoad(ctx, db, query)
+	if err != nil {
+		return nil, err
+	}
+
+	isValid, err := gorpmapping.CheckSignature(dbProj, dbProj.Signature)
+	if err != nil {
+		return nil, err
+	}
+	if !isValid {
+		log.Error(context.Background(), "project.load> project %d data corrupted", dbProj.ID)
+		return nil, sdk.WithStack(sdk.ErrNotFound)
+	}
 	return unwrap(db, store, dbProj, opts)
 }
 
 func unwrap(db gorp.SqlExecutor, store cache.Store, p *dbProject, opts []LoadOptionFunc) (*sdk.Project, error) {
-	proj := sdk.Project(*p)
-
+	proj := p.Project
 	for _, f := range opts {
 		if f == nil {
 			continue
@@ -295,78 +270,8 @@ func unwrap(db gorp.SqlExecutor, store cache.Store, p *dbProject, opts []LoadOpt
 			return nil, err
 		}
 	}
-
+	proj.Blur() // Mask any sensitive data
 	return &proj, nil
-}
-
-// Labels return list of labels given a project ID
-func Labels(db gorp.SqlExecutor, projectID int64) ([]sdk.Label, error) {
-	var labels []sdk.Label
-	query := `
-	SELECT project_label.*
-		FROM project_label
-		WHERE project_label.project_id = $1
-		ORDER BY project_label.name
-	`
-	if _, err := db.Select(&labels, query, projectID); err != nil {
-		if err == sql.ErrNoRows {
-			return labels, nil
-		}
-		return labels, sdk.WrapError(err, "Cannot load labels")
-	}
-
-	return labels, nil
-}
-
-// LabelByName return a label given his name and project id
-func LabelByName(db gorp.SqlExecutor, projectID int64, labelName string) (sdk.Label, error) {
-	var label sdk.Label
-	err := db.SelectOne(&label, "SELECT project_label.* FROM project_label WHERE project_id = $1 AND name = $2", projectID, labelName)
-
-	return label, err
-}
-
-// DeleteLabel delete a label given a label ID
-func DeleteLabel(db gorp.SqlExecutor, labelID int64) error {
-	query := "DELETE FROM project_label WHERE id = $1"
-	if _, err := db.Exec(query, labelID); err != nil {
-		if err == sql.ErrNoRows {
-			return nil
-		}
-		return sdk.WrapError(err, "Cannot delete labels")
-	}
-
-	return nil
-}
-
-// InsertLabel insert a label
-func InsertLabel(db gorp.SqlExecutor, label *sdk.Label) error {
-	if err := label.IsValid(); err != nil {
-		return err
-	}
-
-	lbl := dbLabel(*label)
-	if err := db.Insert(&lbl); err != nil {
-		return sdk.WrapError(err, "Cannot insert labels")
-	}
-	*label = sdk.Label(lbl)
-
-	return nil
-}
-
-// UpdateLabel update a label
-func UpdateLabel(db gorp.SqlExecutor, label *sdk.Label) error {
-	if err := label.IsValid(); err != nil {
-		return err
-	}
-
-	lbl := dbLabel(*label)
-	if _, err := db.Update(&lbl); err != nil {
-		return sdk.WrapError(err, "Cannot update labels")
-	}
-	*label = sdk.Label(lbl)
-
-	return nil
 }
 
 // UpdateFavorite add or delete project from user favorites
@@ -377,7 +282,107 @@ func UpdateFavorite(db gorp.SqlExecutor, projectID int64, userID string, add boo
 	} else {
 		query = "DELETE FROM project_favorite WHERE authentified_user_id = $1 AND project_id = $2"
 	}
-
 	_, err := db.Exec(query, userID, projectID)
 	return sdk.WithStack(err)
+}
+
+func daoVCSServerColumnFilter(col *gorp.ColumnMap) bool {
+	return col.ColumnName == "cipher_vcs_servers"
+}
+
+func AddVCSServer(db gorp.SqlExecutor, proj *sdk.Project, vcsServer *sdk.ProjectVCSServer) error {
+	servers, err := LoadAllVCSServersWithClearContent(db, proj.Key)
+	for _, server := range servers {
+		if server.Name == vcsServer.Name {
+			return sdk.WithStack(sdk.ErrConflict)
+		}
+	}
+	if err != nil {
+		return err
+	}
+
+	servers = append(servers, *vcsServer)
+
+	proj.VCSServers = servers
+	dbProj := dbProject{Project: *proj}
+	if err := gorpmapping.UpdateColumns(db, dbProj, daoVCSServerColumnFilter); err != nil {
+		return err
+	}
+	proj.Blur()
+	return nil
+}
+
+func UpdateVCSServer(db gorp.SqlExecutor, proj *sdk.Project, vcsServers *sdk.ProjectVCSServer) error {
+	servers, err := LoadAllVCSServersWithClearContent(db, proj.Key)
+	if err != nil {
+		return err
+	}
+
+	var vcsSrv *sdk.ProjectVCSServer
+	for i := range servers {
+		if servers[i].Name == vcsServer.Name {
+			vcsSrv = &servers[i]
+		}
+	}
+
+	if vcsSrv == nil {
+		return sdk.WithStack(sdk.ErrNotFound)
+	}
+
+	*vcsSrv = *vcsServers
+
+	proj.VCSServers = vcsServers
+	dbProj := dbProject{Project: *proj}
+	if err := gorpmapping.UpdateColumns(db, dbProj, daoVCSServerColumnFilter); err != nil {
+		return err
+	}
+	proj.Blur()
+	return nil
+}
+
+func RemoveVCSServer(db gorp.SqlExecutor, proj *sdk.Project, vcsServer *sdk.ProjectVCSServer) error {
+	servers, err := LoadAllVCSServersWithClearContent(db, proj.Key)
+	if err != nil {
+		return err
+	}
+
+	for i := range servers {
+		if servers[i].Name == vcsServer.Name {
+			servers = append(servers[:i], servers[i+1:]...)
+			break
+		}
+	}
+
+	proj.VCSServers = servers
+	dbProj := dbProject{Project: *proj}
+	if err := gorpmapping.UpdateColumns(db, dbProj, daoVCSServerColumnFilter); err != nil {
+		return err
+	}
+	proj.Blur()
+	return nil
+
+}
+
+func LoadAllVCSServersWithClearContent(db gorp.SqlExecutor, projectKey string) ([]sdk.ProjectVCSServer, error) {
+	query := gorpmapping.NewQuery("select * from project where projectkey $ $1").Args(projectKey)
+	// It is fine to do only unsafeLoad because the cipher column cipher_vcs_servers is cryptographically
+	// authentified by the same piece of data than the project signature
+	dbProj, err := unsafeLoad(context.Background(), db, query)
+	if err != nil {
+		return nil, err
+	}
+	return dbProj.VCSServers, nil
+}
+
+func LoadVCSServerWithClearContent(db gorp.SqlExecutor, projectKey, rmName string) (*sdk.ProjectVCSServer, error) {
+	vcsServers, err := LoadAllVCSServersWithClearContent(db, projectKey)
+	if err != nil {
+		return nil, err
+	}
+	for _, v := range vcsServers {
+		if v.Name == rmName {
+			return &v, nil
+		}
+	}
+	return nil, sdk.WithStack(sdk.ErrNotFound)
 }

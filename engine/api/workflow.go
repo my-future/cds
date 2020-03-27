@@ -81,12 +81,11 @@ func (api *API) getWorkflowHandler() service.Handler {
 		}
 
 		opts := workflow.LoadOptions{
-			Minimal:               minimal, // if true, load only data from table workflow, not pipelines, app, env...
-			DeepPipeline:          withDeepPipelines,
-			WithIcon:              true,
-			WithLabels:            withLabels,
-			WithAsCodeUpdateEvent: withAsCodeEvents,
-			WithIntegrations:      true,
+			Minimal:          minimal, // if true, load only data from table workflow, not pipelines, app, env...
+			DeepPipeline:     withDeepPipelines,
+			WithIcon:         true,
+			WithLabels:       withLabels,
+			WithIntegrations: true,
 		}
 		w1, err := workflow.Load(ctx, api.mustDB(), api.Cache, *proj, name, opts)
 		if err != nil {
@@ -127,6 +126,20 @@ func (api *API) getWorkflowHandler() service.Handler {
 					w1.TemplateUpToDate = w1.TemplateInstance.Template.Version == w1.TemplateInstance.WorkflowTemplateVersion
 				}
 			}
+		}
+
+		if withAsCodeEvents {
+			var asCodeEvents []sdk.AsCodeEvent
+			var err error
+			if res.FromRepository != "" {
+				asCodeEvents, err = ascode.LoadAsCodeEventByRepo(ctx, db, res.FromRepository)
+			} else {
+				asCodeEvents, err = ascode.LoadAsCodeEventByWorkflowID(ctx, db, w1.ID)
+			}
+			if err != nil {
+				return nil, err
+			}
+			w1.AsCodeEvent = asCodeEvents
 		}
 
 		if isAdmin(ctx) {

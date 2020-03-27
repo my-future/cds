@@ -14,7 +14,7 @@ import (
 )
 
 // UpdateOutgoingHookRunStatus updates the status and callback of a outgoing hook run, and then it reprocess the whole workflow
-func UpdateOutgoingHookRunStatus(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project, wr *sdk.WorkflowRun, hookRunID string, callback sdk.WorkflowNodeOutgoingHookRunCallback) (*ProcessorReport, error) {
+func UpdateOutgoingHookRunStatus(ctx context.Context, db gorp.SqlExecutor, store cache.Store, client sdk.VCSAuthorizedClient, proj sdk.Project, wr *sdk.WorkflowRun, hookRunID string, callback sdk.WorkflowNodeOutgoingHookRunCallback) (*ProcessorReport, error) {
 	ctx, end := observability.Span(ctx, "workflow.UpdateOutgoingHookRunStatus")
 	defer end()
 
@@ -61,7 +61,7 @@ loop:
 		}
 	}
 
-	report1, _, err := processNodeOutGoingHook(ctx, db, store, proj, wr, mapNodes, nil, node, int(nodeRun.SubNumber), nil)
+	report1, _, err := processNodeOutGoingHook(ctx, db, store, client, proj, wr, mapNodes, nil, node, int(nodeRun.SubNumber), nil)
 	report.Merge(ctx, report1, err) //nolint
 	if err != nil {
 		return nil, sdk.WrapError(err, "Unable to processNodeOutGoingHook")

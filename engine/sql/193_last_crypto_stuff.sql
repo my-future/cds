@@ -1,9 +1,16 @@
 -- +migrate Up
 
+
+-- RefactorProjectVCS
+CREATE TABLE project_tmp AS SELECT * FROM project;
+ALTER TABLE project_tmp ADD PRIMARY KEY (id);
+ALTER TABLE "project" ADD COLUMN IF NOT EXISTS cipher_vcs_servers BYTEA;
+ALTER TABLE "project" ADD COLUMN IF NOT EXISTS sig BYTEA;
+ALTER TABLE "project" ADD COLUMN IF NOT EXISTS signer TEXT;
+
 -- RefactorAppDeploymentStrategies
 CREATE TABLE application_deployment_strategy_tmp AS SELECT * FROM application_deployment_strategy;
 ALTER TABLE application_deployment_strategy_tmp ADD PRIMARY KEY (application_id, project_platform_id);
-ALTER TABLE "application_deployment_strategy" ADD COLUMN IF NOT EXISTS migrate BOOLEAN;
 ALTER TABLE "application_deployment_strategy" ADD COLUMN IF NOT EXISTS id SERIAL;
 ALTER TABLE "application_deployment_strategy" ADD COLUMN IF NOT EXISTS cipher_config BYTEA;
 ALTER TABLE "application_deployment_strategy" ADD COLUMN IF NOT EXISTS sig BYTEA;
@@ -12,21 +19,15 @@ ALTER TABLE "application_deployment_strategy" ADD COLUMN IF NOT EXISTS signer TE
 -- RefactorProjectIntegration
 CREATE TABLE project_integration_tmp AS SELECT * FROM project_integration;
 ALTER TABLE project_integration_tmp ADD PRIMARY KEY (id);
-ALTER TABLE "project_integration" ADD COLUMN IF NOT EXISTS migrate BOOLEAN;
 ALTER TABLE "project_integration" ADD COLUMN IF NOT EXISTS cipher_config BYTEA;
 ALTER TABLE "project_integration" ADD COLUMN IF NOT EXISTS sig BYTEA;
 ALTER TABLE "project_integration" ADD COLUMN IF NOT EXISTS signer TEXT;
-
 
 -- RefactorWorkerModel
 CREATE TABLE worker_model_tmp AS SELECT * FROM worker_model;
 ALTER TABLE worker_model_tmp ADD PRIMARY KEY (id);
 ALTER TABLE "worker_model" ADD COLUMN IF NOT EXISTS migrate BOOLEAN;
 
--- RefactorProjectVCS
-CREATE TABLE project_tmp AS SELECT * FROM project;
-ALTER TABLE project_tmp ADD PRIMARY KEY (id);
-ALTER TABLE "project" ADD COLUMN IF NOT EXISTS migrate BOOLEAN;
 
 -- RefactorApplicationVCS
 CREATE TABLE application_tmp AS SELECT * FROM "application";

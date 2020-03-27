@@ -33,7 +33,7 @@ func ParseAndImport(ctx context.Context, db gorp.SqlExecutor, cache cache.Store,
 	}
 
 	//Check if app exist
-	oldApp, errl := LoadByName(db, cache, proj.Key, eapp.Name,
+	oldApp, errl := LoadByName(db, proj.Key, eapp.Name,
 		LoadOptions.WithVariablesWithClearPassword,
 		LoadOptions.WithClearKeys,
 		LoadOptions.WithClearDeploymentStrategies,
@@ -201,7 +201,7 @@ func ParseAndImport(ctx context.Context, db gorp.SqlExecutor, cache cache.Store,
 		}
 	}(&msgList)
 
-	globalError := Import(ctx, db, cache, proj, app, eapp.VCSServer, u, msgChan)
+	globalError := Import(ctx, db, proj, app, eapp.VCSServer, u, msgChan)
 	close(msgChan)
 	done.Wait()
 

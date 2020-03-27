@@ -13,3 +13,9 @@ run:
     - tests
   skip-files:
     - ".*_test.go$"
+
+linters-settings:
+  unparam:
+    check-exported: false
+  unused:
+    check-exported: false

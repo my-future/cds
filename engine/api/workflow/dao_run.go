@@ -1030,7 +1030,8 @@ func stopRunsBlocked(ctx context.Context, db *gorp.DbMap) error {
 			nr.Done = now
 		}
 
-		if err := updateNodeRunStatusAndStage(tx, &nr); err != nil {
+		p := processor{db: db}
+		if err := p.updateNodeRunStatusAndStage(&nr); err != nil {
 			return sdk.WrapError(err, "cannot update node runs stages")
 		}
 	}

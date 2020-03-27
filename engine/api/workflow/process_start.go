@@ -11,8 +11,14 @@ import (
 	"github.com/ovh/cds/sdk/log"
 )
 
-func processStartFromNode(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project,
-	wr *sdk.WorkflowRun, mapNodes map[int64]*sdk.Node, startingFromNode *int64, maxsn int64,
+type processor struct {
+	db     gorp.SqlExecutor
+	store  cache.Store
+	client sdk.VCSAuthorizedClient
+	proj   sdk.Project
+}
+
+func (p processor) processStartFromNode(ctx context.Context, wr *sdk.WorkflowRun, mapNodes map[int64]*sdk.Node, startingFromNode *int64, maxsn int64,
 	hookEvent *sdk.WorkflowNodeRunHookEvent, manual *sdk.WorkflowNodeRunManual) (*ProcessorReport, bool, error) {
 	report := new(ProcessorReport)
 	start := mapNodes[*startingFromNode]
@@ -40,7 +46,7 @@ func processStartFromNode(ctx context.Context, db gorp.SqlExecutor, store cache.
 		}
 	}
 
-	r1, conditionOK, errP := processNodeRun(ctx, db, store, proj, wr, mapNodes, start, int(nextSubNumber), sourceNodesRun, hookEvent, manual)
+	r1, conditionOK, errP := processNodeRun(ctx, wr, mapNodes, start, int(nextSubNumber), sourceNodesRun, hookEvent, manual)
 	if errP != nil {
 		return nil, conditionOK, sdk.WrapError(errP, "processWorkflowRun> Unable to processNodeRun")
 	}
@@ -51,7 +57,7 @@ func processStartFromNode(ctx context.Context, db gorp.SqlExecutor, store cache.
 	return report, conditionOK, nil
 }
 
-func processStartFromRootNode(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project, wr *sdk.WorkflowRun, mapNodes map[int64]*sdk.Node, hookEvent *sdk.WorkflowNodeRunHookEvent, manual *sdk.WorkflowNodeRunManual) (*ProcessorReport, bool, error) {
+func (p processor) processStartFromRootNode(ctx context.Context, wr *sdk.WorkflowRun, mapNodes map[int64]*sdk.Node, hookEvent *sdk.WorkflowNodeRunHookEvent, manual *sdk.WorkflowNodeRunManual) (*ProcessorReport, bool, error) {
 	log.Debug("processWorkflowRun> starting from the root: %d (pipeline %s)", wr.Workflow.WorkflowData.Node.ID, wr.Workflow.Pipelines[wr.Workflow.WorkflowData.Node.Context.PipelineID].Name)
 	report := new(ProcessorReport)
 	//Run the root: manual or from an event
@@ -64,7 +70,7 @@ func processStartFromRootNode(ctx context.Context, db gorp.SqlExecutor, store ca
 		Type: sdk.MsgWorkflowStarting.Type,
 	})
 
-	r1, conditionOK, errP := processNodeRun(ctx, db, store, proj, wr, mapNodes, &wr.Workflow.WorkflowData.Node, 0, nil, hookEvent, manual)
+	r1, conditionOK, errP := processNodeRun(ctx, db, store, client, proj, wr, mapNodes, &wr.Workflow.WorkflowData.Node, 0, nil, hookEvent, manual)
 	if errP != nil {
 		return nil, false, sdk.WrapError(errP, "Unable to process workflow node run")
 	}

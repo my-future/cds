@@ -26,7 +26,7 @@ func (e dbApplication) Canonical() gorpmapping.CanonicalForms {
 }
 
 // LoadOptionFunc is a type for all options in LoadOptions
-type LoadOptionFunc *func(gorp.SqlExecutor, cache.Store, *sdk.Application) error
+type LoadOptionFunc *func(gorp.SqlExecutor, *sdk.Application) error
 
 // LoadOptions provides all options on project loads functions
 var LoadOptions = struct {
@@ -68,18 +68,18 @@ func LoadAsCode(db gorp.SqlExecutor, store cache.Store, projectKey, fromRepo str
 		JOIN project ON project.id = application.project_id
 		WHERE project.projectkey = $1
 		AND application.from_repository = $2`).Args(projectKey, fromRepo)
-	return loadAll(context.Background(), db, store, nil, query)
+	return loadAll(context.Background(), db, nil, query)
 }
 
 // LoadByNameWithClearVCSStrategyPassword load an application from DB
-func LoadByNameWithClearVCSStrategyPassword(db gorp.SqlExecutor, store cache.Store, projectKey, appName string, opts ...LoadOptionFunc) (*sdk.Application, error) {
+func LoadByNameWithClearVCSStrategyPassword(db gorp.SqlExecutor, projectKey, appName string, opts ...LoadOptionFunc) (*sdk.Application, error) {
 	query := gorpmapping.NewQuery(`
 		SELECT application.*
 		FROM application
 		JOIN project ON project.id = application.project_id
 		WHERE project.projectkey = $1
 		AND application.name = $2`).Args(projectKey, appName)
-	app, err := load(context.Background(), db, store, projectKey, opts, query)
+	app, err := load(context.Background(), db, projectKey, opts, query)
 	if err != nil {
 		return nil, err
 	}
@@ -87,14 +87,14 @@ func LoadByNameWithClearVCSStrategyPassword(db gorp.SqlExecutor, store cache.Sto
 }
 
 // LoadByName load an application from DB
-func LoadByName(db gorp.SqlExecutor, store cache.Store, projectKey, appName string, opts ...LoadOptionFunc) (*sdk.Application, error) {
+func LoadByName(db gorp.SqlExecutor, projectKey, appName string, opts ...LoadOptionFunc) (*sdk.Application, error) {
 	query := gorpmapping.NewQuery(`
 		SELECT application.*
 		FROM application
 		JOIN project ON project.id = application.project_id
 		WHERE project.projectkey = $1
 		AND application.name = $2`).Args(projectKey, appName)
-	app, err := load(context.Background(), db, store, projectKey, opts, query)
+	app, err := load(context.Background(), db, projectKey, opts, query)
 	if err != nil {
 		return nil, err
 	}
@@ -103,12 +103,12 @@ func LoadByName(db gorp.SqlExecutor, store cache.Store, projectKey, appName stri
 	return app, nil
 }
 
-func LoadByIDWithClearVCSStrategyPassword(db gorp.SqlExecutor, store cache.Store, id int64, opts ...LoadOptionFunc) (*sdk.Application, error) {
+func LoadByIDWithClearVCSStrategyPassword(db gorp.SqlExecutor, id int64, opts ...LoadOptionFunc) (*sdk.Application, error) {
 	query := gorpmapping.NewQuery(`
                 SELECT application.*
                 FROM application
                 WHERE application.id = $1`).Args(id)
-	app, err := load(context.Background(), db, store, "", opts, query)
+	app, err := load(context.Background(), db, "", opts, query)
 	if err != nil {
 		return nil, err
 	}
@@ -116,12 +116,12 @@ func LoadByIDWithClearVCSStrategyPassword(db gorp.SqlExecutor, store cache.Store
 }
 
 // LoadByID load an application from DB
-func LoadByID(db gorp.SqlExecutor, store cache.Store, id int64, opts ...LoadOptionFunc) (*sdk.Application, error) {
+func LoadByID(db gorp.SqlExecutor, id int64, opts ...LoadOptionFunc) (*sdk.Application, error) {
 	query := gorpmapping.NewQuery(`
                 SELECT application.*
                 FROM application
                 WHERE application.id = $1`).Args(id)
-	app, err := load(context.Background(), db, store, "", opts, query)
+	app, err := load(context.Background(), db, "", opts, query)
 	if err != nil {
 		return nil, err
 	}
@@ -131,18 +131,18 @@ func LoadByID(db gorp.SqlExecutor, store cache.Store, id int64, opts ...LoadOpti
 }
 
 // LoadByWorkflowID loads applications from database for a given workflow id
-func LoadByWorkflowID(db gorp.SqlExecutor, store cache.Store, workflowID int64) ([]sdk.Application, error) {
+func LoadByWorkflowID(db gorp.SqlExecutor, workflowID int64) ([]sdk.Application, error) {
 	query := gorpmapping.NewQuery(`
-	SELECT DISTINCT application.id, application.name
+	SELECT DISTINCT application.*
 	FROM application
 	JOIN w_node_context ON w_node_context.application_id = application.id
 	JOIN w_node ON w_node.id = w_node_context.node_id
 	JOIN workflow ON workflow.id = w_node.workflow_id
 	WHERE workflow.id = $1`).Args(workflowID)
-	return loadAll(context.Background(), db, store, nil, query)
+	return loadAll(context.Background(), db, nil, query)
 }
 
-func load(ctx context.Context, db gorp.SqlExecutor, store cache.Store, key string, opts []LoadOptionFunc, query gorpmapping.Query) (*sdk.Application, error) {
+func load(ctx context.Context, db gorp.SqlExecutor, key string, opts []LoadOptionFunc, query gorpmapping.Query) (*sdk.Application, error) {
 	dbApp := dbApplication{}
 	// Allways load with decryption to get all the data for vcs_strategy
 	found, err := gorpmapping.Get(ctx, db, query, &dbApp, gorpmapping.GetOptions.WithDecryption)
@@ -161,10 +161,10 @@ func load(ctx context.Context, db gorp.SqlExecutor, store cache.Store, key strin
 		return nil, sdk.WithStack(sdk.ErrNotFound)
 	}
 	dbApp.ProjectKey = key
-	return unwrap(db, store, opts, &dbApp)
+	return unwrap(db, opts, &dbApp)
 }
 
-func unwrap(db gorp.SqlExecutor, store cache.Store, opts []LoadOptionFunc, dbApp *dbApplication) (*sdk.Application, error) {
+func unwrap(db gorp.SqlExecutor, opts []LoadOptionFunc, dbApp *dbApplication) (*sdk.Application, error) {
 	app := &dbApp.Application
 
 	if app.ProjectKey == "" {
@@ -176,7 +176,7 @@ func unwrap(db gorp.SqlExecutor, store cache.Store, opts []LoadOptionFunc, dbApp
 	}
 
 	for _, f := range opts {
-		if err := (*f)(db, store, app); err != nil && sdk.Cause(err) != sql.ErrNoRows {
+		if err := (*f)(db, app); err != nil && sdk.Cause(err) != sql.ErrNoRows {
 			return nil, sdk.WrapError(err, "application.unwrap")
 		}
 	}
@@ -184,7 +184,7 @@ func unwrap(db gorp.SqlExecutor, store cache.Store, opts []LoadOptionFunc, dbApp
 }
 
 // Insert add an application id database
-func Insert(db gorp.SqlExecutor, store cache.Store, proj sdk.Project, app *sdk.Application) error {
+func Insert(db gorp.SqlExecutor, proj sdk.Project, app *sdk.Application) error {
 	if err := app.IsValid(); err != nil {
 		return sdk.WrapError(err, "application is not valid")
 	}
@@ -208,7 +208,7 @@ func Insert(db gorp.SqlExecutor, store cache.Store, proj sdk.Project, app *sdk.A
 }
 
 // Update updates application id database
-func Update(db gorp.SqlExecutor, store cache.Store, app *sdk.Application) error {
+func Update(db gorp.SqlExecutor, app *sdk.Application) error {
 	if err := app.IsValid(); err != nil {
 		return sdk.WrapError(err, "application is not valid")
 	}
@@ -222,20 +222,19 @@ func Update(db gorp.SqlExecutor, store cache.Store, app *sdk.Application) error 
 	app.RepositoryStrategy = copyVCSStrategy
 	app.RepositoryStrategy.Password = sdk.PasswordPlaceholder
 	app.RepositoryStrategy.SSHKeyContent = ""
-
 	return nil
 }
 
 // LoadAll returns all applications
-func LoadAll(db gorp.SqlExecutor, store cache.Store, key string, opts ...LoadOptionFunc) ([]sdk.Application, error) {
+func LoadAll(db gorp.SqlExecutor, key string, opts ...LoadOptionFunc) ([]sdk.Application, error) {
 	query := gorpmapping.NewQuery(`
 	SELECT application.*
 	FROM application
-		JOIN project ON project.id = application.project_id
+	JOIN project ON project.id = application.project_id
 	WHERE project.projectkey = $1
 	ORDER BY application.name ASC`).Args(key)
 
-	return loadAll(context.Background(), db, store, opts, query)
+	return loadAll(context.Background(), db, opts, query)
 }
 
 // LoadAllNames returns all application names
@@ -257,7 +256,7 @@ func LoadAllNames(db gorp.SqlExecutor, projID int64) (sdk.IDNames, error) {
 	return res, nil
 }
 
-func loadAll(ctx context.Context, db gorp.SqlExecutor, store cache.Store, opts []LoadOptionFunc, query gorpmapping.Query) ([]sdk.Application, error) {
+func loadAll(ctx context.Context, db gorp.SqlExecutor, opts []LoadOptionFunc, query gorpmapping.Query) ([]sdk.Application, error) {
 	var res []dbApplication
 	if err := gorpmapping.GetAll(ctx, db, query, &res, gorpmapping.GetOptions.WithDecryption); err != nil {
 		return nil, err
@@ -275,7 +274,7 @@ func loadAll(ctx context.Context, db gorp.SqlExecutor, store cache.Store, opts [
 		}
 
 		a := &res[i]
-		app, err := unwrap(db, store, opts, a)
+		app, err := unwrap(db, opts, a)
 		if err != nil {
 			return nil, sdk.WrapError(err, "application.loadapplications")
 		}

@@ -22,13 +22,15 @@ func (projects Projects) Keys() []string {
 
 // Project represent a team with group of users and pipelines
 type Project struct {
-	ID           int64     `json:"-" yaml:"-" db:"id" cli:"-"`
-	Key          string    `json:"key" yaml:"key" db:"projectkey" cli:"key,key"`
-	Name         string    `json:"name" yaml:"name" db:"name" cli:"name"`
-	Description  string    `json:"description" yaml:"description" db:"description" cli:"description"`
-	Icon         string    `json:"icon" yaml:"icon" db:"icon" cli:"-"`
-	Created      time.Time `json:"created" yaml:"created" db:"created" `
-	LastModified time.Time `json:"last_modified" yaml:"last_modified" db:"last_modified"`
+	ID           int64              `json:"-" yaml:"-" db:"id" cli:"-"`
+	Key          string             `json:"key" yaml:"key" db:"projectkey" cli:"key,key"`
+	Name         string             `json:"name" yaml:"name" db:"name" cli:"name"`
+	Description  string             `json:"description" yaml:"description" db:"description" cli:"description"`
+	Icon         string             `json:"icon" yaml:"icon" db:"icon" cli:"-"`
+	Created      time.Time          `json:"created" yaml:"created" db:"created" `
+	LastModified time.Time          `json:"last_modified" yaml:"last_modified" db:"last_modified"`
+	VCSServers   []ProjectVCSServer `json:"vcs_servers" yaml:"vcs_servers" db:"cipher_vcs_servers" gorpmapping:"encrypted,ID,Key" cli:"-"`
+
 	// aggregates
 	Workflows        []Workflow           `json:"workflows,omitempty" yaml:"workflows,omitempty" db:"-" cli:"-"`
 	WorkflowNames    IDNames              `json:"workflow_names,omitempty" yaml:"workflow_names,omitempty" db:"-" cli:"-"`
@@ -42,9 +44,8 @@ type Project struct {
 	EnvironmentNames IDNames              `json:"environment_names,omitempty" yaml:"environment_names,omitempty" db:"-"  cli:"-"`
 	Labels           []Label              `json:"labels,omitempty" yaml:"labels,omitempty" db:"-"  cli:"-"`
 	Permissions      Permissions          `json:"permissions" yaml:"-" db:"-"  cli:"-"`
-	Metadata         Metadata             `json:"metadata" yaml:"metadata" db:"-" cli:"-"`
+	Metadata         Metadata             `json:"metadata" yaml:"metadata" db:"metadata" cli:"-"`
 	Keys             []ProjectKey         `json:"keys" yaml:"keys" db:"-" cli:"-"`
-	VCSServers       []ProjectVCSServer   `json:"vcs_servers" yaml:"vcs_servers" db:"-" cli:"-"`
 	Integrations     []ProjectIntegration `json:"integrations" yaml:"integrations" db:"-" cli:"-"`
 	Features         map[string]bool      `json:"features" yaml:"features" db:"-" cli:"-"`
 	Favorite         bool                 `json:"favorite" yaml:"favorite" db:"-" cli:"favorite"`
@@ -196,11 +197,41 @@ func (proj Project) GetIntegrationByID(id int64) *ProjectIntegration {
 	return nil
 }
 
+func (proj *Project) Blur() {
+	for k := range proj.VCSServers {
+		proj.VCSServers[k].Blur()
+	}
+}
+
+func (proj *Project) GetVCSServer(name string) *ProjectVCSServer {
+	for k := range proj.VCSServers {
+		if proj.VCSServers[k].Name == name {
+			return &proj.VCSServers[k]
+		}
+	}
+	return nil
+}
+
 // ProjectVCSServer represents associations between a project and a vcs server
 type ProjectVCSServer struct {
 	Name     string            `json:"name" yaml:"name" db:"-" cli:"name"`
 	Username string            `json:"username" yaml:"username" db:"-" cli:"username"`
-	Data     map[string]string `json:"-" yaml:"data" db:"-" cli:"-"`
+	Data     map[string]string `json:"data" yaml:"data" db:"-" cli:"-"`
+}
+
+func (p *ProjectVCSServer) IsBlurred() bool {
+	for _, v := range p.Data {
+		if v == PasswordPlaceholder {
+			return true
+		}
+	}
+	return false
+}
+
+func (p *ProjectVCSServer) Blur() {
+	for k := range p.Data {
+		p.Data[k] = PasswordPlaceholder
+	}
 }
 
 // Hash creating a unique hash value

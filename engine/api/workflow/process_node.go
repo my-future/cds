@@ -11,12 +11,11 @@ import (
 
 	"github.com/ovh/cds/engine/api/cache"
 	"github.com/ovh/cds/engine/api/observability"
-	"github.com/ovh/cds/engine/api/repositoriesmanager"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/log"
 )
 
-func processNodeTriggers(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project, wr *sdk.WorkflowRun, mapNodes map[int64]*sdk.Node, parentNodeRun []*sdk.WorkflowNodeRun, node *sdk.Node, parentSubNumber int) (*ProcessorReport, error) {
+func (p processor) processNodeTriggers(ctx context.Context, wr *sdk.WorkflowRun, mapNodes map[int64]*sdk.Node, parentNodeRun []*sdk.WorkflowNodeRun, node *sdk.Node, parentSubNumber int) (*ProcessorReport, error) {
 	report := new(ProcessorReport)
 
 	for j := range node.Triggers {
@@ -34,7 +33,7 @@ func processNodeTriggers(ctx context.Context, db gorp.SqlExecutor, store cache.S
 
 		if !abortTrigger {
 			//Keep the subnumber of the previous node in the graph
-			r1, _, errPwnr := processNodeRun(ctx, db, store, proj, wr, mapNodes, &t.ChildNode, int(parentSubNumber), parentNodeRun, nil, nil)
+			r1, _, errPwnr := processNodeRun(ctx, db, store, client, proj, wr, mapNodes, &t.ChildNode, int(parentSubNumber), parentNodeRun, nil, nil)
 			if errPwnr != nil {
 				log.Error(ctx, "processWorkflowRun> Unable to process node ID=%d: %s", t.ChildNode.ID, errPwnr)
 				AddWorkflowRunInfo(wr, sdk.SpawnMsg{
@@ -50,9 +49,10 @@ func processNodeTriggers(ctx context.Context, db gorp.SqlExecutor, store cache.S
 	return report, nil
 }
 
-func processNodeRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project, wr *sdk.WorkflowRun,
+func (p processor) processNodeRun(ctx context.Context, wr *sdk.WorkflowRun,
 	mapNodes map[int64]*sdk.Node, n *sdk.Node, subNumber int, parentNodeRuns []*sdk.WorkflowNodeRun,
 	hookEvent *sdk.WorkflowNodeRunHookEvent, manual *sdk.WorkflowNodeRunManual) (*ProcessorReport, bool, error) {
+
 	report := new(ProcessorReport)
 	exist, errN := nodeRunExist(db, wr.ID, n.ID, wr.Number, subNumber)
 	if errN != nil {
@@ -83,14 +83,14 @@ func processNodeRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store,
 
 	switch n.Type {
 	case sdk.NodeTypeFork, sdk.NodeTypePipeline, sdk.NodeTypeJoin:
-		r1, conditionOK, errT := processNode(ctx, db, store, proj, wr, mapNodes, n, subNumber, parentNodeRuns, hookEvent, manual)
+		r1, conditionOK, errT := processNode(ctx, db, store, client, proj, wr, mapNodes, n, subNumber, parentNodeRuns, hookEvent, manual)
 		if errT != nil {
 			return nil, false, sdk.WrapError(errT, "Unable to processNode")
 		}
 		report.Merge(ctx, r1, nil) // nolint
 		return report, conditionOK, nil
 	case sdk.NodeTypeOutGoingHook:
-		r1, conditionOK, errO := processNodeOutGoingHook(ctx, db, store, proj, wr, mapNodes, parentNodeRuns, n, subNumber, manual)
+		r1, conditionOK, errO := processNodeOutGoingHook(ctx, db, store, client, proj, wr, mapNodes, parentNodeRuns, n, subNumber, manual)
 		if errO != nil {
 			return nil, false, sdk.WrapError(errO, "Unable to processNodeOutGoingHook")
 		}
@@ -100,7 +100,7 @@ func processNodeRun(ctx context.Context, db gorp.SqlExecutor, store cache.Store,
 	return nil, false, nil
 }
 
-func processNode(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project, wr *sdk.WorkflowRun,
+func (p processor) processNode(ctx context.Context, db gorp.SqlExecutor, store cache.Store, client sdk.VCSAuthorizedClient, proj sdk.Project, wr *sdk.WorkflowRun,
 	mapNodes map[int64]*sdk.Node, n *sdk.Node, subNumber int, parents []*sdk.WorkflowNodeRun,
 	hookEvent *sdk.WorkflowNodeRunHookEvent, manual *sdk.WorkflowNodeRunManual) (*ProcessorReport, bool, error) {
 	report := new(ProcessorReport)
@@ -238,8 +238,8 @@ func processNode(ctx context.Context, db gorp.SqlExecutor, store cache.Store, pr
 	var vcsInf *vcsInfos
 	var errVcs error
 	if needVCSInfo {
-		vcsServer := repositoriesmanager.GetProjectVCSServer(proj, app.VCSServer)
-		vcsInf, errVcs = getVCSInfos(ctx, db, store, proj.Key, vcsServer, currentJobGitValues, app.Name, app.VCSServer, app.RepositoryFullname)
+		vcsServer := proj.GetVCSServer(app.VCSServer)
+		vcsInf, errVcs = getVCSInfos(ctx, db, store, client, vcsServer, currentJobGitValues, app.Name, app.VCSServer, app.RepositoryFullname)
 		if errVcs != nil {
 			AddWorkflowRunInfo(wr, sdk.SpawnMsg{
 				ID:   sdk.MsgWorkflowError.ID,

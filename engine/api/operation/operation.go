@@ -9,7 +9,6 @@ import (
 	"github.com/go-gorp/gorp"
 
 	"github.com/ovh/cds/engine/api/cache"
-	"github.com/ovh/cds/engine/api/repositoriesmanager"
 	"github.com/ovh/cds/engine/api/services"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/exportentities"
@@ -17,7 +16,7 @@ import (
 
 var CacheOperationKey = cache.Key("repositories", "operation", "push")
 
-func PushOperation(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project, app *sdk.Application, wp exportentities.WorkflowPulled, branch, message string, isUpdate bool, u sdk.Identifiable) (*sdk.Operation, error) {
+func PushOperation(ctx context.Context, db gorp.SqlExecutor, store cache.Store, proj sdk.Project, app *sdk.Application, wp exportentities.WorkflowPulled, repoURL, branch, message string, isUpdate bool, u sdk.Identifiable) (*sdk.Operation, error) {
 	var vcsStrategy = app.RepositoryStrategy
 	if vcsStrategy.SSHKey != "" {
 		key := proj.GetSSHKey(vcsStrategy.SSHKey)
@@ -48,25 +47,23 @@ func PushOperation(ctx context.Context, db gorp.SqlExecutor, store cache.Store, 
 	ope.User.Username = u.GetFullname()
 	ope.User.Username = u.GetUsername()
 
-	vcsServer := repositoriesmanager.GetProjectVCSServer(proj, app.VCSServer)
-	if vcsServer == nil {
-		return nil, sdk.WithStack(fmt.Errorf("no vcsServer found"))
-	}
-	client, errC := repositoriesmanager.AuthorizedClient(ctx, db, store, proj.Key, vcsServer)
-	if errC != nil {
-		return nil, errC
-	}
+	/*
+		client, errC := repositoriesmanager.AuthorizedClient(ctx, db, proj.Key, vcsServer)
+		if errC != nil {
+			return nil, errC
+		}
 
-	repo, errR := client.RepoByFullname(ctx, app.RepositoryFullname)
-	if errR != nil {
-		return nil, sdk.WrapError(errR, "cannot get repo %s", app.RepositoryFullname)
-	}
+		repo, errR := client.RepoByFullname(ctx, app.RepositoryFullname)
+		if errR != nil {
+			return nil, sdk.WrapError(errR, "cannot get repo %s", app.RepositoryFullname)
+		}
 
-	if app.RepositoryStrategy.ConnectionType == "ssh" {
-		ope.URL = repo.SSHCloneURL
-	} else {
-		ope.URL = repo.HTTPCloneURL
-	}
+		if app.RepositoryStrategy.ConnectionType == "ssh" {
+			ope.URL = repo.SSHCloneURL
+		} else {
+			ope.URL = repo.HTTPCloneURL
+		}
+	*/
 
 	buf := new(bytes.Buffer)
 	if err := wp.Tar(ctx, buf); err != nil {

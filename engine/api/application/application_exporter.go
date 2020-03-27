@@ -6,15 +6,14 @@ import (
 
 	"github.com/go-gorp/gorp"
 
-	"github.com/ovh/cds/engine/api/cache"
 	"github.com/ovh/cds/sdk"
 	"github.com/ovh/cds/sdk/exportentities"
 )
 
 // Export an application
-func Export(db gorp.SqlExecutor, cache cache.Store, key string, appName string, f exportentities.Format, encryptFunc sdk.EncryptFunc, w io.Writer) (int, error) {
+func Export(db gorp.SqlExecutor, key string, appName string, f exportentities.Format, encryptFunc sdk.EncryptFunc, w io.Writer) (int, error) {
 	// Load app
-	app, err := LoadByNameWithClearVCSStrategyPassword(db, cache, key, appName,
+	app, err := LoadByNameWithClearVCSStrategyPassword(db, key, appName,
 		LoadOptions.WithVariablesWithClearPassword, LoadOptions.WithClearKeys, LoadOptions.WithClearDeploymentStrategies,
 	)
 	if err != nil {

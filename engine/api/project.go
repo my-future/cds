@@ -476,15 +476,6 @@ func (api *API) postProjectHandler() service.Handler {
 		}
 		defer tx.Rollback() // nolint
 
-		// Check that project does not already exists
-		exist, errExist := project.Exist(tx, p.Key)
-		if errExist != nil {
-			return sdk.WrapError(errExist, "cannot check if project %s exist", p.Key)
-		}
-		if exist {
-			return sdk.WrapError(sdk.ErrConflict, "project %s already exists", p.Key)
-		}
-
 		if err := project.Insert(tx, api.Cache, &p); err != nil {
 			return sdk.WrapError(err, "cannot insert project")
 		}
