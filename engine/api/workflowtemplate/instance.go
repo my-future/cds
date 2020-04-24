@@ -204,7 +204,7 @@ func CheckAndExecuteTemplate(ctx context.Context, db *gorp.DbMap, consumer sdk.A
 
 	// try to get a instance not assign to a workflow but with the same slug
 	wti, err := LoadInstanceByTemplateIDAndProjectIDAndRequestWorkflowName(ctx, tx, wt.ID, p.ID, req.WorkflowName)
-	if err != nil {
+	if err != nil && !sdk.ErrorIs(err, sdk.ErrNotFound) {
 		return nil, err
 	}
 
